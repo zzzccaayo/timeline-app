@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>好友时区时间轴 · Friends Timeline</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="top">
+    <h1>好友时区时间轴</h1>
+    <p class="sub">添加你的朋友和他们的活跃时段，查看共同在线的交叉时间，方便约游戏。</p>
+    <div class="controls">
+      <label>
+        显示基准时区：
+        <select id="viewerTz"></select>
+      </label>
+      <label>
+        <input type="checkbox" id="use24h" checked />
+        24 小时制
+      </label>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel">
+      <h2>添加朋友</h2>
+      <form id="friendForm" class="friend-form">
+        <div class="row">
+          <label>
+            昵称
+            <input type="text" id="fName" placeholder="例如 Alice" required maxlength="20" />
+          </label>
+          <label>
+            时区
+            <select id="fTz" required></select>
+          </label>
+          <label>
+            颜色
+            <input type="color" id="fColor" value="#4f8cff" />
+          </label>
+        </div>
+        <div class="row">
+          <label>
+            活跃开始（本地时间）
+            <input type="time" id="fStart" value="19:00" required />
+          </label>
+          <label>
+            活跃结束（本地时间）
+            <input type="time" id="fEnd" value="23:30" required />
+          </label>
+          <button type="submit" id="submitBtn">添加</button>
+          <button type="button" id="cancelEdit" class="secondary" hidden>取消编辑</button>
+        </div>
+        <p class="hint">跨午夜也支持：例如 22:00 – 02:00 会自动跨到第二天。</p>
+      </form>
+    </section>
+
+    <section class="panel">
+      <h2>朋友列表</h2>
+      <ul id="friendList" class="friends"></ul>
+      <p id="emptyHint" class="hint">还没有朋友，先添加一个试试。</p>
+    </section>
+
+    <section class="panel">
+      <h2>时间轴</h2>
+      <div class="legend">
+        <span class="dot overlap"></span> 所有人共同在线
+        <span class="sep">·</span>
+        <span class="dot now"></span> 现在
+      </div>
+      <div id="timeline" class="timeline"></div>
+    </section>
+
+    <section class="panel">
+      <h2>共同在线时段</h2>
+      <div id="overlapList" class="overlap-list"></div>
+    </section>
+  </main>
+
+  <footer>
+    <small>数据只保存在你的浏览器本地（localStorage）。</small>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
