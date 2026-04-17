@@ -44,13 +44,44 @@ init();
 
 async function init() {
   bindAuthUI();
-  const { data: { session } } = await supabase.auth.getSession();
-  await applySession(session);
+
+  let firstHandled = false;
+  let applyChain = Promise.resolve();
+  const queueApply = (session) => {
+    applyChain = applyChain
+      .then(() => applySession(session))
+      .catch((err) => console.error("[app] applySession failed", err));
+    return applyChain;
+  };
+
+  supabase.auth.onAuthStateChange((event, session) => {
+    console.log("[app] auth event:", event);
+    firstHandled = true;
+    queueApply(session);
+  });
+
+  setTimeout(async () => {
+    if (firstHandled) return;
+    console.warn("[app] onAuthStateChange did not fire, falling back to getSession");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      firstHandled = true;
+      queueApply(session);
+    } catch (err) {
+      console.error("[app] getSession failed", err);
+      toast("加载失败，请刷新重试", "error");
+      showView("auth");
+    }
+  }, 3000);
+
+  setTimeout(() => {
+    if (!views.loading.hidden) {
+      console.warn("[app] still on loading view after 10s, forcing auth");
+      showView("auth");
+    }
+  }, 10000);
 }
 
-supabase.auth.onAuthStateChange(async (_event, session) => {
-  await applySession(session);
-});
 
 async function applySession(session) {
   state.session = session;
