@@ -4,572 +4,147 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>好友时区时间轴</title>
-  <style>
-    :root {
-      --bg: #0f1220;
-      --panel: #181c2e;
-      --panel-2: #1f2440;
-      --text: #e8ecf8;
-      --muted: #8b90ab;
-      --accent: #4f8cff;
-      --overlap: #ffd166;
-      --now: #ef476f;
-      --border: #262c49;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      background: linear-gradient(180deg, #0b0e1b 0%, #0f1220 100%);
-      color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
-        "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-      min-height: 100vh;
-    }
-    .top { padding: 32px 24px 12px; max-width: 1100px; margin: 0 auto; }
-    .top h1 { margin: 0 0 4px; font-size: 26px; }
-    .sub { color: var(--muted); margin: 0 0 12px; }
-    .controls { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; color: var(--muted); font-size: 14px; }
-    .controls label { display: inline-flex; gap: 6px; align-items: center; }
-    main { max-width: 1100px; margin: 0 auto; padding: 12px 24px 60px; display: grid; gap: 18px; }
-    .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; }
-    .panel h2 { margin: 0 0 12px; font-size: 16px; color: #cfd5ef; }
-    .friend-form .row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; align-items: end; }
-    .friend-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); flex: 1 1 160px; }
-    input, select, button {
-      font: inherit; color: var(--text); background: var(--panel-2);
-      border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; outline: none;
-    }
-    input:focus, select:focus { border-color: var(--accent); }
-    input[type="color"] { padding: 2px; height: 38px; width: 54px; }
-    button { background: var(--accent); border-color: var(--accent); color: #fff; cursor: pointer; padding: 8px 16px; }
-    button.secondary { background: transparent; border-color: var(--border); color: var(--muted); }
-    button:hover { filter: brightness(1.08); }
-    .hint { color: var(--muted); font-size: 12px; margin: 4px 0 0; }
-    .friends { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
-    .friend { display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: var(--panel-2); border-radius: 10px; border: 1px solid var(--border); }
-    .friend .swatch { width: 14px; height: 14px; border-radius: 50%; box-shadow: 0 0 0 2px rgba(255,255,255,0.06); }
-    .friend .name { font-weight: 600; }
-    .friend .meta { color: var(--muted); font-size: 13px; }
-    .friend .spacer { flex: 1; }
-    .friend .actions button { background: transparent; border: 1px solid var(--border); color: var(--muted); padding: 4px 10px; margin-left: 6px; font-size: 12px; }
-    .legend { color: var(--muted); font-size: 12px; margin-bottom: 10px; display: flex; gap: 6px; align-items: center; }
-    .legend .dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: var(--accent); }
-    .legend .dot.overlap { background: var(--overlap); }
-    .legend .dot.now { background: var(--now); border-radius: 50%; }
-    .legend .sep { margin: 0 6px; }
-    .timeline { position: relative; display: grid; gap: 6px; }
-    .tl-header, .tl-row { position: relative; display: grid; grid-template-columns: 120px 1fr; align-items: center; gap: 10px; }
-    .tl-label { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .tl-track { position: relative; height: 28px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
-    .tl-hours { position: relative; height: 22px; border-bottom: 1px dashed var(--border); }
-    .tl-hours .hour { position: absolute; top: 0; bottom: 0; font-size: 10px; color: var(--muted); transform: translateX(-50%); display: flex; align-items: center; }
-    .tl-hours .tick { position: absolute; top: 100%; width: 1px; height: 6px; background: var(--border); transform: translateX(-50%); }
-    .tl-block { position: absolute; top: 4px; bottom: 4px; border-radius: 6px; opacity: 0.85; }
-    .tl-block.overlap { background: var(--overlap) !important; opacity: 0.95; }
-    .tl-now { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--now); box-shadow: 0 0 8px var(--now); pointer-events: none; }
-    .tl-now::after { content: ""; position: absolute; top: -4px; left: -4px; width: 10px; height: 10px; border-radius: 50%; background: var(--now); }
-    .overlap-list { display: flex; flex-wrap: wrap; gap: 8px; }
-    .overlap-chip { background: var(--panel-2); border: 1px solid var(--border); padding: 6px 10px; border-radius: 999px; font-size: 13px; }
-    .overlap-chip.empty { color: var(--muted); }
-    footer { text-align: center; color: var(--muted); padding: 0 24px 24px; }
-    @media (max-width: 640px) {
-      .tl-header, .tl-row { grid-template-columns: 80px 1fr; }
-      .tl-hours .hour { font-size: 9px; }
-    }
-  </style>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <header class="top">
-    <h1>好友时区时间轴</h1>
-    <p class="sub">添加你的朋友和他们的活跃时段，查看共同在线的交叉时间，方便约游戏。</p>
-    <div class="controls">
-      <label>显示基准时区：<select id="viewerTz"></select></label>
-      <label><input type="checkbox" id="use24h" checked /> 24 小时制</label>
-    </div>
-  </header>
+  <div id="view-loading" class="view full-center">
+    <div class="spinner"></div>
+  </div>
 
-  <main>
-    <section class="panel">
-      <h2>添加朋友</h2>
-      <form id="friendForm" class="friend-form">
-        <div class="row">
-          <label>昵称<input type="text" id="fName" placeholder="例如 Alice" required maxlength="20" /></label>
-          <label>时区<select id="fTz" required></select></label>
-          <label>颜色<input type="color" id="fColor" value="#4f8cff" /></label>
-        </div>
-        <div class="row">
-          <label>活跃开始（本地时间）<input type="time" id="fStart" value="19:00" required /></label>
-          <label>活跃结束（本地时间）<input type="time" id="fEnd" value="23:30" required /></label>
-          <button type="submit" id="submitBtn">添加</button>
-          <button type="button" id="cancelEdit" class="secondary" hidden>取消编辑</button>
-        </div>
-        <p class="hint">跨午夜也支持：例如 22:00 – 02:00 会自动跨到第二天。</p>
-      </form>
-    </section>
+  <div id="view-auth" class="view full-center" hidden>
+    <div class="auth-card">
+      <h1 class="brand">好友时区时间轴</h1>
+      <p class="sub">看看朋友们都几点在线，方便约局。</p>
 
-    <section class="panel">
-      <h2>朋友列表</h2>
-      <ul id="friendList" class="friends"></ul>
-      <p id="emptyHint" class="hint">还没有朋友，先添加一个试试。</p>
-    </section>
-
-    <section class="panel">
-      <h2>时间轴</h2>
-      <div class="legend">
-        <span class="dot overlap"></span> 所有人共同在线
-        <span class="sep">·</span>
-        <span class="dot now"></span> 现在
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-tab="login">登录</button>
+        <button class="tab" data-tab="register">注册</button>
       </div>
-      <div id="timeline" class="timeline"></div>
-    </section>
 
-    <section class="panel">
-      <h2>共同在线时段</h2>
-      <div id="overlapList" class="overlap-list"></div>
-    </section>
-  </main>
+      <form id="loginForm" class="auth-form">
+        <label>邮箱<input type="email" name="email" required autocomplete="email" /></label>
+        <label>密码<input type="password" name="password" required minlength="6" autocomplete="current-password" /></label>
+        <button type="submit">登录</button>
+      </form>
 
-  <footer><small>数据只保存在你的浏览器本地（localStorage）。</small></footer>
+      <form id="registerForm" class="auth-form" hidden>
+        <label>昵称<input type="text" name="username" required minlength="1" maxlength="24" /></label>
+        <label>邮箱<input type="email" name="email" required autocomplete="email" /></label>
+        <label>密码<input type="password" name="password" required minlength="6" autocomplete="new-password" /></label>
+        <button type="submit">创建账号</button>
+      </form>
 
-  <script>
-    const STORAGE_KEY = "friends_timeline_v1";
-    const SETTINGS_KEY = "friends_timeline_settings_v1";
+      <p id="authError" class="error" hidden></p>
+    </div>
+  </div>
 
-    const state = {
-      friends: loadFriends(),
-      viewerTz: loadSettings().viewerTz || Intl.DateTimeFormat().resolvedOptions().timeZone,
-      use24h: loadSettings().use24h ?? true,
-      editingId: null,
-    };
+  <div id="view-onboarding" class="view" hidden>
+    <div class="container narrow">
+      <header class="page-header">
+        <h1>欢迎, <span id="obUsername">朋友</span></h1>
+        <p class="sub">先设置一下你的时区和每天活跃时段，方便朋友找你。</p>
+      </header>
 
-    const els = {
-      viewerTz: document.getElementById("viewerTz"),
-      use24h: document.getElementById("use24h"),
-      form: document.getElementById("friendForm"),
-      fName: document.getElementById("fName"),
-      fTz: document.getElementById("fTz"),
-      fColor: document.getElementById("fColor"),
-      fStart: document.getElementById("fStart"),
-      fEnd: document.getElementById("fEnd"),
-      submitBtn: document.getElementById("submitBtn"),
-      cancelEdit: document.getElementById("cancelEdit"),
-      list: document.getElementById("friendList"),
-      emptyHint: document.getElementById("emptyHint"),
-      timeline: document.getElementById("timeline"),
-      overlapList: document.getElementById("overlapList"),
-    };
+      <section class="panel">
+        <div class="friend-code-big">
+          你的好友代码
+          <div class="code-value" id="obFriendCode">——————</div>
+          <p class="hint">把这个代码发给朋友，他们就能加你。</p>
+        </div>
+      </section>
 
-    init();
+      <form id="onboardingForm" class="panel form-panel">
+        <label>昵称<input type="text" name="username" required minlength="1" maxlength="24" /></label>
+        <label>时区<select name="timezone" required></select></label>
+        <div class="row">
+          <label>活跃开始<input type="time" name="active_start" value="19:00" required /></label>
+          <label>活跃结束<input type="time" name="active_end" value="23:00" required /></label>
+        </div>
+        <label>在时间轴上显示的颜色<input type="color" name="color" value="#4f8cff" /></label>
+        <p class="hint">活跃时段可跨午夜，例如 22:00 – 02:00。</p>
+        <p id="onboardingError" class="error" hidden></p>
+        <button type="submit">保存并进入</button>
+      </form>
+    </div>
+  </div>
 
-    function init() {
-      const zones = getTimezones();
-      fillTzSelect(els.viewerTz, zones, state.viewerTz);
-      fillTzSelect(els.fTz, zones, state.viewerTz);
-      els.use24h.checked = state.use24h;
-
-      els.viewerTz.addEventListener("change", () => { state.viewerTz = els.viewerTz.value; saveSettings(); render(); });
-      els.use24h.addEventListener("change", () => { state.use24h = els.use24h.checked; saveSettings(); render(); });
-      els.form.addEventListener("submit", onSubmit);
-      els.cancelEdit.addEventListener("click", cancelEdit);
-
-      render();
-      setInterval(render, 60 * 1000);
-    }
-
-    function getTimezones() {
-      if (typeof Intl.supportedValuesOf === "function") {
-        try { return Intl.supportedValuesOf("timeZone"); } catch {}
-      }
-      return [
-        "UTC","Asia/Shanghai","Asia/Tokyo","Asia/Seoul","Asia/Singapore","Asia/Bangkok",
-        "Asia/Kolkata","Asia/Dubai","Europe/London","Europe/Paris","Europe/Berlin",
-        "Europe/Moscow","Africa/Cairo","Africa/Johannesburg","Australia/Sydney",
-        "Pacific/Auckland","America/New_York","America/Chicago","America/Denver",
-        "America/Los_Angeles","America/Toronto","America/Sao_Paulo","America/Mexico_City",
-      ];
-    }
-
-    function fillTzSelect(sel, zones, current) {
-      sel.innerHTML = "";
-      for (const z of zones) {
-        const opt = document.createElement("option");
-        opt.value = z;
-        const offset = formatOffset(tzOffsetMinutes(z, new Date()));
-        opt.textContent = `${z} (UTC${offset})`;
-        if (z === current) opt.selected = true;
-        sel.appendChild(opt);
-      }
-    }
-
-    function onSubmit(e) {
-      e.preventDefault();
-      const friend = {
-        id: state.editingId || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()+Math.random())),
-        name: els.fName.value.trim(),
-        tz: els.fTz.value,
-        color: els.fColor.value,
-        start: els.fStart.value,
-        end: els.fEnd.value,
-      };
-      if (!friend.name || !friend.start || !friend.end) return;
-
-      if (state.editingId) {
-        const i = state.friends.findIndex(f => f.id === state.editingId);
-        if (i >= 0) state.friends[i] = friend;
-      } else {
-        state.friends.push(friend);
-      }
-      saveFriends();
-      resetForm();
-      render();
-    }
-
-    function resetForm() {
-      state.editingId = null;
-      els.form.reset();
-      els.fStart.value = "19:00";
-      els.fEnd.value = "23:30";
-      els.fColor.value = randomColor();
-      els.fTz.value = state.viewerTz;
-      els.submitBtn.textContent = "添加";
-      els.cancelEdit.hidden = true;
-    }
-
-    function cancelEdit() { resetForm(); }
-
-    function editFriend(id) {
-      const f = state.friends.find(x => x.id === id);
-      if (!f) return;
-      state.editingId = id;
-      els.fName.value = f.name;
-      els.fTz.value = f.tz;
-      els.fColor.value = f.color;
-      els.fStart.value = f.start;
-      els.fEnd.value = f.end;
-      els.submitBtn.textContent = "保存";
-      els.cancelEdit.hidden = false;
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
-
-    function deleteFriend(id) {
-      if (!confirm("删除这位朋友？")) return;
-      state.friends = state.friends.filter(f => f.id !== id);
-      saveFriends();
-      if (state.editingId === id) resetForm();
-      render();
-    }
-
-    function render() { renderList(); renderTimeline(); }
-
-    function renderList() {
-      els.list.innerHTML = "";
-      els.emptyHint.hidden = state.friends.length > 0;
-      for (const f of state.friends) {
-        const li = document.createElement("li");
-        li.className = "friend";
-        const offset = formatOffset(tzOffsetMinutes(f.tz, new Date()));
-        const localNow = formatTimeIn(f.tz, new Date(), state.use24h);
-        li.innerHTML = `
-          <span class="swatch" style="background:${escapeAttr(f.color)}"></span>
-          <div>
-            <div class="name">${escapeHtml(f.name)}</div>
-            <div class="meta">${escapeHtml(f.tz)} (UTC${offset}) · 当地现在 ${localNow} · 活跃 ${escapeHtml(f.start)}–${escapeHtml(f.end)}</div>
-          </div>
-          <span class="spacer"></span>
-          <span class="actions">
-            <button data-act="edit">编辑</button>
-            <button data-act="del">删除</button>
+  <div id="view-main" class="view" hidden>
+    <header class="topbar">
+      <div class="brand-small">时区时间轴</div>
+      <div class="topbar-right">
+        <span class="me-code">
+          <span class="me-name" id="meName"></span>
+          <span class="code-pill" id="meCodePill" title="点击复制">
+            <span class="code-label">好友代码</span>
+            <span id="meCode">——————</span>
           </span>
-        `;
-        li.querySelector('[data-act="edit"]').addEventListener("click", () => editFriend(f.id));
-        li.querySelector('[data-act="del"]').addEventListener("click", () => deleteFriend(f.id));
-        els.list.appendChild(li);
-      }
-    }
+        </span>
+        <button id="openSettings" class="ghost">设置</button>
+        <button id="logout" class="ghost">退出</button>
+      </div>
+    </header>
 
-    function renderTimeline() {
-      els.timeline.innerHTML = "";
-      const anchor = startOfDayInTz(new Date(), state.viewerTz);
-      const totalMinutes = 24 * 60;
+    <main class="container">
+      <section class="panel">
+        <div class="timeline-header">
+          <div>
+            <h2 class="panel-title">我的时间轴</h2>
+            <p class="hint" id="selfMeta"></p>
+          </div>
+          <div class="legend">
+            <span class="dot now"></span> 现在
+            <span class="sep">·</span>
+            <span class="dot overlap"></span> 所有人共同在线
+          </div>
+        </div>
+        <div id="timeline" class="timeline"></div>
+      </section>
 
-      const header = document.createElement("div");
-      header.className = "tl-header";
-      const headerLabel = document.createElement("div");
-      headerLabel.className = "tl-label";
-      headerLabel.textContent = `基准：${state.viewerTz}`;
-      const hours = document.createElement("div");
-      hours.className = "tl-hours";
-      for (let h = 0; h <= 24; h += 3) {
-        const pct = (h / 24) * 100;
-        const hourEl = document.createElement("div");
-        hourEl.className = "hour";
-        hourEl.style.left = pct + "%";
-        hourEl.textContent = formatHourLabel(h, state.use24h);
-        hours.appendChild(hourEl);
-        const tick = document.createElement("div");
-        tick.className = "tick";
-        tick.style.left = pct + "%";
-        hours.appendChild(tick);
-      }
-      header.appendChild(headerLabel);
-      header.appendChild(hours);
-      els.timeline.appendChild(header);
+      <section class="panel">
+        <h2 class="panel-title">共同在线时段</h2>
+        <div id="overlapList" class="overlap-list"></div>
+      </section>
 
-      const friendIntervals = [];
-      for (const f of state.friends) {
-        const intervals = computeIntervalsInViewer(f, anchor);
-        friendIntervals.push({ friend: f, intervals });
+      <section class="panel">
+        <h2 class="panel-title">好友</h2>
 
-        const row = document.createElement("div");
-        row.className = "tl-row";
-        const label = document.createElement("div");
-        label.className = "tl-label";
-        label.textContent = f.name;
-        label.title = `${f.name} · ${f.tz}`;
-        const track = document.createElement("div");
-        track.className = "tl-track";
+        <form id="addFriendForm" class="inline-form">
+          <input type="text" id="friendCodeInput" placeholder="输入 6 位好友代码" maxlength="6" autocomplete="off" />
+          <button type="submit">添加</button>
+        </form>
+        <p id="addFriendMsg" class="hint" hidden></p>
 
-        for (const [s, e] of intervals) {
-          const left = (s / totalMinutes) * 100;
-          const width = ((e - s) / totalMinutes) * 100;
-          const block = document.createElement("div");
-          block.className = "tl-block";
-          block.style.left = left + "%";
-          block.style.width = width + "%";
-          block.style.background = f.color;
-          block.title = `${f.name}: ${minutesToLabel(s)} – ${minutesToLabel(e)}`;
-          track.appendChild(block);
-        }
-        addNowMarker(track, anchor);
-        row.appendChild(label);
-        row.appendChild(track);
-        els.timeline.appendChild(row);
-      }
+        <div id="pendingIn" class="pending-list"></div>
+        <div id="pendingOut" class="pending-list"></div>
 
-      const overlaps = computeOverlap(friendIntervals.map(x => x.intervals));
-      if (state.friends.length >= 2) {
-        const row = document.createElement("div");
-        row.className = "tl-row";
-        const label = document.createElement("div");
-        label.className = "tl-label";
-        label.textContent = "共同在线";
-        const track = document.createElement("div");
-        track.className = "tl-track";
-        for (const [s, e] of overlaps) {
-          const left = (s / totalMinutes) * 100;
-          const width = ((e - s) / totalMinutes) * 100;
-          const block = document.createElement("div");
-          block.className = "tl-block overlap";
-          block.style.left = left + "%";
-          block.style.width = width + "%";
-          block.title = `共同在线: ${minutesToLabel(s)} – ${minutesToLabel(e)}`;
-          track.appendChild(block);
-        }
-        addNowMarker(track, anchor);
-        row.appendChild(label);
-        row.appendChild(track);
-        els.timeline.appendChild(row);
-      }
+        <ul id="friendList" class="friends"></ul>
+        <p id="friendEmpty" class="hint" hidden>还没有好友，把你的好友代码发给朋友吧。</p>
+      </section>
+    </main>
+  </div>
 
-      renderOverlapList(overlaps);
-    }
+  <div id="settingsModal" class="modal" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2>编辑个人资料</h2>
+        <button class="ghost" id="closeSettings">✕</button>
+      </div>
+      <form id="settingsForm" class="form-panel">
+        <label>昵称<input type="text" name="username" required minlength="1" maxlength="24" /></label>
+        <label>时区<select name="timezone" required></select></label>
+        <div class="row">
+          <label>活跃开始<input type="time" name="active_start" required /></label>
+          <label>活跃结束<input type="time" name="active_end" required /></label>
+        </div>
+        <label>颜色<input type="color" name="color" /></label>
+        <p id="settingsError" class="error" hidden></p>
+        <button type="submit">保存</button>
+      </form>
+    </div>
+  </div>
 
-    function renderOverlapList(overlaps) {
-      els.overlapList.innerHTML = "";
-      if (state.friends.length < 2) {
-        const c = document.createElement("div");
-        c.className = "overlap-chip empty";
-        c.textContent = "至少添加 2 位朋友才能计算交叉时段。";
-        els.overlapList.appendChild(c);
-        return;
-      }
-      if (overlaps.length === 0) {
-        const c = document.createElement("div");
-        c.className = "overlap-chip empty";
-        c.textContent = "今天没有共同在线时段。";
-        els.overlapList.appendChild(c);
-        return;
-      }
-      for (const [s, e] of overlaps) {
-        const c = document.createElement("div");
-        c.className = "overlap-chip";
-        c.textContent = `${minutesToLabel(s)} – ${minutesToLabel(e)} · ${formatDuration(e - s)}`;
-        els.overlapList.appendChild(c);
-      }
-    }
+  <div id="toast" class="toast" hidden></div>
 
-    function addNowMarker(track, anchor) {
-      const now = Date.now();
-      const dayMs = 24 * 60 * 60 * 1000;
-      const rel = now - anchor.getTime();
-      if (rel < 0 || rel > dayMs) return;
-      const pct = (rel / dayMs) * 100;
-      const el = document.createElement("div");
-      el.className = "tl-now";
-      el.style.left = pct + "%";
-      track.appendChild(el);
-    }
-
-    function computeIntervalsInViewer(friend, anchor) {
-      const anchorMs = anchor.getTime();
-      const dayMs = 24 * 60 * 60 * 1000;
-      const [sh, sm] = friend.start.split(":").map(Number);
-      const [eh, em] = friend.end.split(":").map(Number);
-      const startMin = sh * 60 + sm;
-      let endMin = eh * 60 + em;
-      if (endMin <= startMin) endMin += 24 * 60;
-
-      const candidates = [];
-      for (const dayOffset of [-1, 0, 1]) {
-        const refMs = anchorMs + dayOffset * dayMs;
-        const localMidnight = localMidnightMsForViewerDate(refMs, friend.tz);
-        candidates.push([localMidnight + startMin * 60000, localMidnight + endMin * 60000]);
-      }
-
-      const result = [];
-      for (const [a, b] of candidates) {
-        const s = Math.max(a, anchorMs);
-        const e = Math.min(b, anchorMs + dayMs);
-        if (e > s) result.push([(s - anchorMs) / 60000, (e - anchorMs) / 60000]);
-      }
-      return mergeIntervals(result);
-    }
-
-    function localMidnightMsForViewerDate(viewerRefMs, friendTz) {
-      const y = Number(formatInTz(viewerRefMs, friendTz, { year: "numeric" }));
-      const m = Number(formatInTz(viewerRefMs, friendTz, { month: "2-digit" }));
-      const d = Number(formatInTz(viewerRefMs, friendTz, { day: "2-digit" }));
-      const utcGuess = Date.UTC(y, m - 1, d, 0, 0, 0);
-      const offset = tzOffsetMinutes(friendTz, new Date(utcGuess));
-      return utcGuess - offset * 60000;
-    }
-
-    function tzOffsetMinutes(tz, date) {
-      const dtf = new Intl.DateTimeFormat("en-US", {
-        timeZone: tz, hourCycle: "h23",
-        year: "numeric", month: "2-digit", day: "2-digit",
-        hour: "2-digit", minute: "2-digit", second: "2-digit",
-      });
-      const parts = dtf.formatToParts(date).reduce((acc, p) => {
-        if (p.type !== "literal") acc[p.type] = p.value;
-        return acc;
-      }, {});
-      const asUTC = Date.UTC(
-        Number(parts.year), Number(parts.month) - 1, Number(parts.day),
-        Number(parts.hour), Number(parts.minute), Number(parts.second)
-      );
-      return Math.round((asUTC - date.getTime()) / 60000);
-    }
-
-    function formatInTz(ms, tz, opts) {
-      return new Intl.DateTimeFormat("en-US", { timeZone: tz, ...opts }).format(new Date(ms));
-    }
-
-    function startOfDayInTz(date, tz) {
-      const y = Number(formatInTz(date.getTime(), tz, { year: "numeric" }));
-      const m = Number(formatInTz(date.getTime(), tz, { month: "2-digit" }));
-      const d = Number(formatInTz(date.getTime(), tz, { day: "2-digit" }));
-      const utcGuess = Date.UTC(y, m - 1, d, 0, 0, 0);
-      const offset = tzOffsetMinutes(tz, new Date(utcGuess));
-      return new Date(utcGuess - offset * 60000);
-    }
-
-    function mergeIntervals(arr) {
-      if (arr.length === 0) return arr;
-      arr.sort((a, b) => a[0] - b[0]);
-      const out = [arr[0].slice()];
-      for (let i = 1; i < arr.length; i++) {
-        const last = out[out.length - 1];
-        if (arr[i][0] <= last[1]) last[1] = Math.max(last[1], arr[i][1]);
-        else out.push(arr[i].slice());
-      }
-      return out;
-    }
-
-    function computeOverlap(listOfIntervals) {
-      if (listOfIntervals.length === 0) return [];
-      let acc = listOfIntervals[0].map(i => i.slice());
-      for (let i = 1; i < listOfIntervals.length; i++) {
-        acc = intersectIntervals(acc, listOfIntervals[i]);
-        if (acc.length === 0) break;
-      }
-      return acc;
-    }
-
-    function intersectIntervals(a, b) {
-      const out = [];
-      let i = 0, j = 0;
-      while (i < a.length && j < b.length) {
-        const s = Math.max(a[i][0], b[j][0]);
-        const e = Math.min(a[i][1], b[j][1]);
-        if (e > s) out.push([s, e]);
-        if (a[i][1] < b[j][1]) i++; else j++;
-      }
-      return out;
-    }
-
-    function minutesToLabel(min) {
-      const total = Math.round(min);
-      const h = Math.floor(total / 60) % 24;
-      const m = total % 60;
-      if (state.use24h) return `${pad(h)}:${pad(m)}`;
-      const ap = h >= 12 ? "PM" : "AM";
-      const h12 = ((h + 11) % 12) + 1;
-      return `${h12}:${pad(m)} ${ap}`;
-    }
-
-    function formatHourLabel(h, use24) {
-      if (use24) return pad(h % 24);
-      const ap = h >= 12 && h < 24 ? "P" : "A";
-      const h12 = ((h + 11) % 12) + 1;
-      return `${h12}${ap}`;
-    }
-
-    function formatTimeIn(tz, date, use24) {
-      return new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: !use24 }).format(date);
-    }
-
-    function formatOffset(min) {
-      const sign = min >= 0 ? "+" : "-";
-      const abs = Math.abs(min);
-      return `${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`;
-    }
-
-    function formatDuration(min) {
-      const h = Math.floor(min / 60);
-      const m = Math.round(min % 60);
-      if (h && m) return `${h} 小时 ${m} 分`;
-      if (h) return `${h} 小时`;
-      return `${m} 分钟`;
-    }
-
-    function pad(n) { return String(n).padStart(2, "0"); }
-
-    function randomColor() {
-      const palette = ["#4f8cff", "#ff6b6b", "#8bd17c", "#c792ea", "#f5a623", "#2ec4b6", "#ff9ff3", "#ffd166"];
-      return palette[Math.floor(Math.random() * palette.length)];
-    }
-
-    function escapeHtml(s) {
-      return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-    }
-    function escapeAttr(s) { return escapeHtml(s); }
-
-    function loadFriends() {
-      try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (!raw) return [];
-        const arr = JSON.parse(raw);
-        return Array.isArray(arr) ? arr : [];
-      } catch { return []; }
-    }
-    function saveFriends() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state.friends)); }
-    function loadSettings() {
-      try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}"); } catch { return {}; }
-    }
-    function saveSettings() {
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify({ viewerTz: state.viewerTz, use24h: state.use24h }));
-    }
-  </script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>
