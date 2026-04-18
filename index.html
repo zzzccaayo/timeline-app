@@ -142,6 +142,7 @@
         <div class="chat-title" id="chatTitle"></div>
       </div>
       <div class="topbar-right">
+        <button id="chatSettingsBtn" class="ghost">群设置</button>
         <button id="chatLogout" class="ghost">退出</button>
       </div>
     </header>
@@ -159,6 +160,36 @@
         </form>
       </section>
     </main>
+  </div>
+
+  <div id="chatGroupModal" class="modal" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2>群设置</h2>
+        <button class="ghost" id="closeChatGroupModal">✕</button>
+      </div>
+      <div class="form-panel">
+        <label>群名
+          <div class="inline-save">
+            <input type="text" id="chatGroupNameInput" minlength="1" maxlength="64" />
+            <button type="button" id="saveChatGroupName">保存</button>
+          </div>
+        </label>
+
+        <div class="divider"></div>
+
+        <div class="section-label">添加成员</div>
+        <div id="chatGroupAddPicker" class="friend-picker"></div>
+        <p id="chatGroupAddEmpty" class="hint" hidden>你的好友都已在群里，或你还没有其他可邀请的好友。</p>
+        <button type="button" id="addChatGroupMembersBtn">添加选中的好友</button>
+
+        <p id="chatGroupError" class="error" hidden></p>
+
+        <div class="divider"></div>
+
+        <button type="button" id="leaveChatGroupBtn" class="danger">退出群</button>
+      </div>
+    </div>
   </div>
 
   <div id="createGroupModal" class="modal" hidden>

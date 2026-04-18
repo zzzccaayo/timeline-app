@@ -579,6 +579,19 @@ button.success {
   to   { opacity: 1; transform: translate(-50%, 0); }
 }
 
+/* Divider & inline save row */
+.divider {
+  height: 1px;
+  background: var(--border-soft);
+  margin: 4px 0;
+}
+.inline-save {
+  display: flex; gap: 8px; align-items: center;
+  margin-top: 6px;
+}
+.inline-save input { flex: 1; }
+.inline-save button { flex-shrink: 0; padding: 8px 16px; }
+
 /* Panel head row */
 .panel-head-row {
   display: flex; align-items: center; justify-content: space-between;

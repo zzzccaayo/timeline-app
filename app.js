@@ -161,6 +161,12 @@ function bindAuthUI() {
     }
   });
   chatInput.addEventListener("input", autosizeChatInput);
+
+  document.getElementById("chatSettingsBtn").addEventListener("click", openChatGroupModal);
+  document.getElementById("closeChatGroupModal").addEventListener("click", closeChatGroupModal);
+  document.getElementById("saveChatGroupName").addEventListener("click", onRenameChatGroup);
+  document.getElementById("addChatGroupMembersBtn").addEventListener("click", onAddChatGroupMembers);
+  document.getElementById("leaveChatGroupBtn").addEventListener("click", onLeaveChatGroup);
 }
 
 function switchTab(name) {
@@ -724,6 +730,135 @@ function autosizeChatInput() {
   const el = document.getElementById("chatInput");
   el.style.height = "auto";
   el.style.height = Math.min(el.scrollHeight, 140) + "px";
+}
+
+/* ---------- Chat group settings ---------- */
+
+function openChatGroupModal() {
+  if (!state.currentGroup) return;
+  const g = state.currentGroup;
+  document.getElementById("chatGroupNameInput").value = g.name;
+
+  const picker = document.getElementById("chatGroupAddPicker");
+  const emptyEl = document.getElementById("chatGroupAddEmpty");
+  picker.innerHTML = "";
+  const memberIds = new Set(g.members.map(m => m.id));
+  const candidates = state.friends.filter(f => !memberIds.has(f.profile.id));
+  if (candidates.length === 0) {
+    emptyEl.hidden = false;
+    picker.hidden = true;
+  } else {
+    emptyEl.hidden = true;
+    picker.hidden = false;
+    for (const f of candidates) {
+      const row = document.createElement("label");
+      row.className = "friend-pick";
+      row.innerHTML = `
+        <input type="checkbox" value="${escapeAttr(f.profile.id)}" />
+        <span class="swatch" style="background:${escapeAttr(f.profile.color)}"></span>
+        <span class="pick-name">${escapeHtml(f.profile.username)}</span>
+      `;
+      picker.appendChild(row);
+    }
+  }
+  document.getElementById("chatGroupError").hidden = true;
+  document.getElementById("chatGroupModal").hidden = false;
+}
+
+function closeChatGroupModal() {
+  document.getElementById("chatGroupModal").hidden = true;
+}
+
+function showGroupErr(msg) {
+  const err = document.getElementById("chatGroupError");
+  err.textContent = msg;
+  err.hidden = false;
+}
+
+async function onRenameChatGroup() {
+  if (!state.currentGroup) return;
+  const name = document.getElementById("chatGroupNameInput").value.trim();
+  document.getElementById("chatGroupError").hidden = true;
+  if (!name) { showGroupErr("请输入群名"); return; }
+  const gid = state.currentGroup.id;
+  const { error } = await supabase.rpc("rename_chat_group", { p_group_id: gid, p_name: name });
+  if (error) {
+    const m = (error.message || "").toLowerCase();
+    if (m.includes("name_required")) showGroupErr("请输入群名");
+    else if (m.includes("not_a_member")) showGroupErr("你已不在这个群里");
+    else showGroupErr(error.message || "保存失败");
+    return;
+  }
+  state.currentGroup.name = name;
+  document.getElementById("chatTitle").textContent = name;
+  const cached = state.chatGroups.find(g => g.id === gid);
+  if (cached) cached.name = name;
+  toast("群名已更新", "success");
+}
+
+async function onAddChatGroupMembers() {
+  if (!state.currentGroup) return;
+  const picker = document.getElementById("chatGroupAddPicker");
+  const ids = Array.from(picker.querySelectorAll("input:checked")).map(i => i.value);
+  document.getElementById("chatGroupError").hidden = true;
+  if (ids.length === 0) { showGroupErr("请至少选择一位好友"); return; }
+  const gid = state.currentGroup.id;
+  try {
+    for (const uid of ids) {
+      const { error } = await supabase.rpc("add_chat_group_member", {
+        p_group_id: gid, p_user_id: uid,
+      });
+      if (error) throw error;
+    }
+    await refreshChatMembers();
+    await loadChatGroups();
+    closeChatGroupModal();
+    toast("已添加成员", "success");
+  } catch (ex) {
+    const m = (ex.message || "").toLowerCase();
+    if (m.includes("not_friends")) showGroupErr("只能邀请已加好友的人");
+    else if (m.includes("not_a_member")) showGroupErr("你已不在这个群里");
+    else showGroupErr(ex.message || "添加失败");
+  }
+}
+
+async function refreshChatMembers() {
+  if (!state.currentGroup) return;
+  const gid = state.currentGroup.id;
+  const { data: mrows, error: mErr } = await supabase
+    .from("chat_group_members").select("user_id").eq("group_id", gid);
+  if (mErr) throw mErr;
+  const memberIds = mrows.map(r => r.user_id);
+  let members = [];
+  if (memberIds.length > 0) {
+    const { data: profs, error: pErr } = await supabase
+      .from("profiles")
+      .select("id, username, color, timezone, active_start, active_end, active_periods")
+      .in("id", memberIds);
+    if (pErr) throw pErr;
+    members = profs || [];
+  }
+  state.currentGroup.members = members;
+  document.getElementById("chatMemberCount").textContent = `· ${members.length} 人`;
+  renderChatMembers();
+  renderChatMessages();
+}
+
+async function onLeaveChatGroup() {
+  if (!state.currentGroup) return;
+  if (!confirm("确认退出这个群？离开后就看不到这里的消息了。")) return;
+  const gid = state.currentGroup.id;
+  const { error } = await supabase.rpc("leave_chat_group", { p_group_id: gid });
+  if (error) {
+    toast("退出失败：" + error.message, "error");
+    return;
+  }
+  closeChatGroupModal();
+  teardownChat();
+  await loadChatGroups();
+  renderMain();
+  showView("main");
+  toast("已退出群", "success");
 }
 
 /* ---------- Main view render ---------- */
