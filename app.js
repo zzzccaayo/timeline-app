@@ -15,6 +15,8 @@ const state = {
   friends: [],
   pendingIn: [],
   pendingOut: [],
+  chatGroups: [],
+  currentGroup: null,
   use24h: true,
 };
 
@@ -23,6 +25,7 @@ const views = {
   auth: document.getElementById("view-auth"),
   onboarding: document.getElementById("view-onboarding"),
   main: document.getElementById("view-main"),
+  chat: document.getElementById("view-chat"),
 };
 
 function showView(name) {
@@ -85,11 +88,13 @@ async function init() {
 
 async function applySession(session) {
   state.session = session;
+  teardownChat();
   if (!session) {
     state.profile = null;
     state.friends = [];
     state.pendingIn = [];
     state.pendingOut = [];
+    state.chatGroups = [];
     showView("auth");
     return;
   }
@@ -101,6 +106,7 @@ async function applySession(session) {
       return;
     }
     await loadFriends();
+    await loadChatGroups();
     renderMain();
     showView("main");
   } catch (err) {
@@ -140,6 +146,21 @@ function bindAuthUI() {
       list.appendChild(makePeriodRow("19:00", "23:00"));
     });
   });
+
+  document.getElementById("openCreateGroup").addEventListener("click", openCreateGroupModal);
+  document.getElementById("closeCreateGroup").addEventListener("click", closeCreateGroupModal);
+  document.getElementById("createGroupForm").addEventListener("submit", onCreateGroup);
+  document.getElementById("chatBack").addEventListener("click", closeChatGroup);
+  document.getElementById("chatLogout").addEventListener("click", onLogout);
+  document.getElementById("chatForm").addEventListener("submit", onSendMessage);
+  const chatInput = document.getElementById("chatInput");
+  chatInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      document.getElementById("chatForm").requestSubmit();
+    }
+  });
+  chatInput.addEventListener("input", autosizeChatInput);
 }
 
 function switchTab(name) {
@@ -401,6 +422,310 @@ function copyMyCode() {
   navigator.clipboard.writeText(state.profile.friend_code).then(() => toast("已复制好友代码", "success"));
 }
 
+/* ---------- Chat groups ---------- */
+
+async function loadChatGroups() {
+  const { data: groups, error } = await supabase
+    .from("chat_groups")
+    .select("id, name, created_at")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+
+  if (!groups || groups.length === 0) {
+    state.chatGroups = [];
+    return;
+  }
+
+  const gids = groups.map(g => g.id);
+  const { data: mrows, error: mErr } = await supabase
+    .from("chat_group_members")
+    .select("group_id, user_id")
+    .in("group_id", gids);
+  if (mErr) throw mErr;
+
+  const memberIds = [...new Set(mrows.map(m => m.user_id))];
+  const profsById = {};
+  if (memberIds.length > 0) {
+    const { data: profs } = await supabase
+      .from("profiles").select("id, username, color").in("id", memberIds);
+    for (const p of (profs || [])) profsById[p.id] = p;
+  }
+
+  const byGroup = {};
+  for (const r of mrows) {
+    if (!byGroup[r.group_id]) byGroup[r.group_id] = [];
+    if (profsById[r.user_id]) byGroup[r.group_id].push(profsById[r.user_id]);
+  }
+
+  state.chatGroups = groups.map(g => ({ ...g, members: byGroup[g.id] || [] }));
+}
+
+function renderGroupList() {
+  const ul = document.getElementById("groupList");
+  const empty = document.getElementById("groupEmpty");
+  ul.innerHTML = "";
+  empty.hidden = state.chatGroups.length > 0;
+  for (const g of state.chatGroups) {
+    const li = document.createElement("li");
+    li.className = "group-row";
+    const others = g.members.filter(m => m.id !== state.session.user.id);
+    const names = others.length > 0
+      ? others.map(m => m.username).join("、")
+      : "只有你";
+    const dots = g.members.slice(0, 5).map(m =>
+      `<span class="member-dot" style="background:${escapeAttr(m.color)}"></span>`
+    ).join("");
+    li.innerHTML = `
+      <div class="group-dots">${dots}</div>
+      <div class="group-info">
+        <div class="name">${escapeHtml(g.name)}</div>
+        <div class="meta">${g.members.length} 人 · ${escapeHtml(names)}</div>
+      </div>
+      <span class="chevron">›</span>
+    `;
+    li.addEventListener("click", () => openChatGroup(g.id));
+    ul.appendChild(li);
+  }
+}
+
+function openCreateGroupModal() {
+  const form = document.getElementById("createGroupForm");
+  form.reset();
+  const picker = document.getElementById("groupFriendPicker");
+  const emptyEl = document.getElementById("groupFriendEmpty");
+  picker.innerHTML = "";
+  if (state.friends.length === 0) {
+    emptyEl.hidden = false;
+    picker.hidden = true;
+  } else {
+    emptyEl.hidden = true;
+    picker.hidden = false;
+    for (const f of state.friends) {
+      const row = document.createElement("label");
+      row.className = "friend-pick";
+      row.innerHTML = `
+        <input type="checkbox" value="${escapeAttr(f.profile.id)}" />
+        <span class="swatch" style="background:${escapeAttr(f.profile.color)}"></span>
+        <span class="pick-name">${escapeHtml(f.profile.username)}</span>
+      `;
+      picker.appendChild(row);
+    }
+  }
+  document.getElementById("createGroupError").hidden = true;
+  document.getElementById("createGroupModal").hidden = false;
+}
+
+function closeCreateGroupModal() {
+  document.getElementById("createGroupModal").hidden = true;
+}
+
+async function onCreateGroup(e) {
+  e.preventDefault();
+  const form = e.target;
+  const name = form.name.value.trim();
+  const err = document.getElementById("createGroupError");
+  err.hidden = true;
+  const memberIds = Array.from(form.querySelectorAll(".friend-pick input:checked")).map(i => i.value);
+  try {
+    const { data: gid, error } = await supabase.rpc("create_chat_group", {
+      p_name: name,
+      p_member_ids: memberIds,
+    });
+    if (error) throw error;
+    closeCreateGroupModal();
+    await loadChatGroups();
+    renderGroupList();
+    toast("群已创建", "success");
+    if (gid) await openChatGroup(gid);
+  } catch (ex) {
+    const m = (ex.message || "").toLowerCase();
+    if (m.includes("not_friends")) err.textContent = "只能邀请已加好友的人";
+    else if (m.includes("name_required")) err.textContent = "请输入群名";
+    else err.textContent = ex.message || "创建失败";
+    err.hidden = false;
+  }
+}
+
+async function openChatGroup(gid) {
+  teardownChat();
+  showView("loading");
+  try {
+    const { data: group, error: gErr } = await supabase
+      .from("chat_groups").select("id, name").eq("id", gid).single();
+    if (gErr) throw gErr;
+
+    const { data: mrows, error: mErr } = await supabase
+      .from("chat_group_members").select("user_id").eq("group_id", gid);
+    if (mErr) throw mErr;
+
+    const memberIds = mrows.map(r => r.user_id);
+    let members = [];
+    if (memberIds.length > 0) {
+      const { data: profs, error: pErr } = await supabase
+        .from("profiles")
+        .select("id, username, color, timezone, active_start, active_end, active_periods")
+        .in("id", memberIds);
+      if (pErr) throw pErr;
+      members = profs || [];
+    }
+
+    const { data: messages, error: msgErr } = await supabase
+      .from("chat_messages")
+      .select("id, group_id, user_id, content, created_at")
+      .eq("group_id", gid)
+      .order("created_at", { ascending: true })
+      .limit(200);
+    if (msgErr) throw msgErr;
+
+    state.currentGroup = {
+      id: gid,
+      name: group.name,
+      members,
+      messages: messages || [],
+      channel: null,
+    };
+
+    document.getElementById("chatTitle").textContent = group.name;
+    document.getElementById("chatMemberCount").textContent = `· ${members.length} 人`;
+    renderChatMembers();
+    renderChatMessages();
+    subscribeChat(gid);
+    showView("chat");
+    requestAnimationFrame(scrollChatToBottom);
+  } catch (ex) {
+    console.error(ex);
+    toast("打开群失败：" + (ex.message || ex), "error");
+    showView("main");
+  }
+}
+
+function subscribeChat(gid) {
+  const ch = supabase.channel(`chat-${gid}`)
+    .on("postgres_changes", {
+      event: "INSERT",
+      schema: "public",
+      table: "chat_messages",
+      filter: `group_id=eq.${gid}`,
+    }, (payload) => {
+      if (!state.currentGroup || state.currentGroup.id !== gid) return;
+      const m = payload.new;
+      if (state.currentGroup.messages.some(x => x.id === m.id)) return;
+      state.currentGroup.messages.push(m);
+      appendMessage(m);
+      scrollChatToBottom();
+    })
+    .subscribe();
+  state.currentGroup.channel = ch;
+}
+
+function teardownChat() {
+  if (state.currentGroup && state.currentGroup.channel) {
+    supabase.removeChannel(state.currentGroup.channel);
+  }
+  state.currentGroup = null;
+}
+
+function closeChatGroup() {
+  teardownChat();
+  renderMain();
+  showView("main");
+}
+
+async function onSendMessage(e) {
+  e.preventDefault();
+  const input = document.getElementById("chatInput");
+  const content = input.value.trim();
+  if (!content || !state.currentGroup) return;
+  input.value = "";
+  autosizeChatInput();
+  const gid = state.currentGroup.id;
+  const { data, error } = await supabase.from("chat_messages").insert({
+    group_id: gid,
+    user_id: state.session.user.id,
+    content,
+  }).select().single();
+  if (error) {
+    toast("发送失败：" + error.message, "error");
+    input.value = content;
+    autosizeChatInput();
+    return;
+  }
+  if (data && state.currentGroup && state.currentGroup.id === gid) {
+    if (!state.currentGroup.messages.some(x => x.id === data.id)) {
+      state.currentGroup.messages.push(data);
+      appendMessage(data);
+      scrollChatToBottom();
+    }
+  }
+}
+
+function renderChatMembers() {
+  const ul = document.getElementById("chatMemberList");
+  ul.innerHTML = "";
+  for (const m of state.currentGroup.members) {
+    const li = document.createElement("li");
+    li.className = "chat-member";
+    const offset = formatOffset(tzOffsetMinutes(m.timezone, new Date()));
+    const now = formatTimeIn(m.timezone, new Date(), state.use24h);
+    const periods = formatPeriods(getActivePeriods(m));
+    const isMe = m.id === state.session.user.id;
+    li.innerHTML = `
+      <span class="swatch" style="background:${escapeAttr(m.color)}"></span>
+      <div class="member-info">
+        <div class="name">${escapeHtml(m.username)}${isMe ? ' <span class="me-tag">我</span>' : ''}</div>
+        <div class="meta">${escapeHtml(tzLabel(m.timezone))} (UTC${offset}) · 当地 ${now} · 活跃 ${escapeHtml(periods)}</div>
+      </div>
+    `;
+    ul.appendChild(li);
+  }
+}
+
+function renderChatMessages() {
+  const el = document.getElementById("chatMessages");
+  el.innerHTML = "";
+  if (state.currentGroup.messages.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "chat-empty";
+    empty.textContent = "还没有消息，说点什么打破沉默 ✨";
+    el.appendChild(empty);
+    return;
+  }
+  for (const m of state.currentGroup.messages) appendMessage(m);
+}
+
+function appendMessage(m) {
+  const el = document.getElementById("chatMessages");
+  const emptyEl = el.querySelector(".chat-empty");
+  if (emptyEl) emptyEl.remove();
+  const author = state.currentGroup.members.find(p => p.id === m.user_id);
+  const isMe = m.user_id === state.session.user.id;
+  const name = author ? author.username : "(未知)";
+  const color = author ? author.color : "#888";
+  const ts = new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+  const item = document.createElement("div");
+  item.className = "msg" + (isMe ? " me" : "");
+  item.innerHTML = `
+    <span class="msg-avatar" style="background:${escapeAttr(color)}">${escapeHtml(name.slice(0, 1))}</span>
+    <div class="msg-body">
+      <div class="msg-head"><span class="msg-name">${escapeHtml(name)}</span><span class="msg-time">${ts}</span></div>
+      <div class="msg-text">${escapeHtml(m.content)}</div>
+    </div>
+  `;
+  el.appendChild(item);
+}
+
+function scrollChatToBottom() {
+  const el = document.getElementById("chatMessages");
+  if (el) el.scrollTop = el.scrollHeight;
+}
+
+function autosizeChatInput() {
+  const el = document.getElementById("chatInput");
+  el.style.height = "auto";
+  el.style.height = Math.min(el.scrollHeight, 140) + "px";
+}
+
 /* ---------- Main view render ---------- */
 
 function renderMain() {
@@ -415,6 +740,7 @@ function renderMain() {
   renderTimeline();
   renderFriendList();
   renderPending();
+  renderGroupList();
 }
 
 function renderFriendList() {

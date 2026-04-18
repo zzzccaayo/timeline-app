@@ -123,7 +123,61 @@
         <ul id="friendList" class="friends"></ul>
         <p id="friendEmpty" class="hint" hidden>还没有好友，把你的好友代码发给朋友吧。</p>
       </section>
+
+      <section class="panel">
+        <div class="panel-head-row">
+          <h2 class="panel-title">聊天群</h2>
+          <button id="openCreateGroup" class="ghost small">+ 新建聊天群</button>
+        </div>
+        <ul id="groupList" class="group-list"></ul>
+        <p id="groupEmpty" class="hint" hidden>还没有聊天群，和好友一起新建一个吧。</p>
+      </section>
     </main>
+  </div>
+
+  <div id="view-chat" class="view" hidden>
+    <header class="topbar">
+      <div class="topbar-left">
+        <button id="chatBack" class="ghost">← 返回</button>
+        <div class="chat-title" id="chatTitle"></div>
+      </div>
+      <div class="topbar-right">
+        <button id="chatLogout" class="ghost">退出</button>
+      </div>
+    </header>
+    <main class="container chat-main">
+      <section class="panel">
+        <h2 class="panel-title">成员 <span class="count" id="chatMemberCount"></span></h2>
+        <ul id="chatMemberList" class="chat-members"></ul>
+      </section>
+      <section class="panel chat-panel">
+        <h2 class="panel-title">消息</h2>
+        <div id="chatMessages" class="chat-messages"></div>
+        <form id="chatForm" class="chat-composer">
+          <textarea id="chatInput" placeholder="说点什么…（Enter 发送，Shift+Enter 换行）" rows="1" maxlength="2000"></textarea>
+          <button type="submit">发送</button>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <div id="createGroupModal" class="modal" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2>新建聊天群</h2>
+        <button class="ghost" id="closeCreateGroup">✕</button>
+      </div>
+      <form id="createGroupForm" class="form-panel">
+        <label>群名<input type="text" name="name" required minlength="1" maxlength="64" placeholder="例如：开黑小分队" /></label>
+        <div>
+          <div class="section-label">选择好友</div>
+          <div id="groupFriendPicker" class="friend-picker"></div>
+          <p id="groupFriendEmpty" class="hint" hidden>你还没有好友，先添加好友再新建群。</p>
+        </div>
+        <p id="createGroupError" class="error" hidden></p>
+        <button type="submit">创建</button>
+      </form>
+    </div>
   </div>
 
   <div id="settingsModal" class="modal" hidden>
