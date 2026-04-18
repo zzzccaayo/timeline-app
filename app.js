@@ -392,7 +392,7 @@ function renderMain() {
   const offset = formatOffset(tzOffsetMinutes(state.profile.timezone, new Date()));
   const nowLocal = formatTimeIn(state.profile.timezone, new Date(), state.use24h);
   document.getElementById("selfMeta").textContent =
-    `${state.profile.timezone} (UTC${offset}) · 当地现在 ${nowLocal} · 活跃 ${state.profile.active_start}–${state.profile.active_end}`;
+    `${tzLabel(state.profile.timezone)} (UTC${offset}) · 当地现在 ${nowLocal} · 活跃 ${state.profile.active_start}–${state.profile.active_end}`;
 
   renderTimeline();
   renderFriendList();
@@ -415,7 +415,7 @@ function renderFriendList() {
       <span class="swatch" style="background:${escapeAttr(p.color)}"></span>
       <div>
         <div class="name">${escapeHtml(p.username)}</div>
-        <div class="meta">${escapeHtml(p.timezone)} (UTC${offset}) · 当地现在 ${now} · 活跃 ${escapeHtml(p.active_start)}–${escapeHtml(p.active_end)}</div>
+        <div class="meta">${escapeHtml(tzLabel(p.timezone))} (UTC${offset}) · 当地现在 ${now} · 活跃 ${escapeHtml(p.active_start)}–${escapeHtml(p.active_end)}</div>
       </div>
       <span class="spacer"></span>
       <button class="ghost small" data-act="del">删除</button>
@@ -473,10 +473,10 @@ function renderTimeline() {
   header.className = "tl-header";
   const headerLabel = document.createElement("div");
   headerLabel.className = "tl-label";
-  headerLabel.textContent = viewerTz;
+  headerLabel.textContent = tzLabel(viewerTz);
   const hours = document.createElement("div");
   hours.className = "tl-hours";
-  for (let h = 0; h <= 24; h += 3) {
+  for (let h = 0; h <= 24; h += 2) {
     const pct = (h / 24) * 100;
     const hourEl = document.createElement("div");
     hourEl.className = "hour";
@@ -692,19 +692,34 @@ function intersectIntervals(a, b) {
 
 /* ---------- Formatting ---------- */
 
+const TIMEZONES = [
+  { value: "Asia/Shanghai", label: "中国 · 北京" },
+  { value: "Asia/Tokyo", label: "日本 · 东京" },
+  { value: "America/Phoenix", label: "美国 · 凤凰城" },
+  { value: "America/Los_Angeles", label: "美国 · 旧金山" },
+  { value: "America/New_York", label: "美国 · 纽约" },
+  { value: "America/Toronto", label: "加拿大 · 多伦多" },
+];
+
 function fillTimezoneSelect(sel, current) {
-  const zones = (typeof Intl.supportedValuesOf === "function")
-    ? Intl.supportedValuesOf("timeZone")
-    : ["UTC","Asia/Shanghai","Asia/Tokyo","Asia/Seoul","Asia/Singapore","Europe/London","Europe/Paris","America/New_York","America/Los_Angeles","Australia/Sydney"];
   sel.innerHTML = "";
-  for (const z of zones) {
+  const list = [...TIMEZONES];
+  if (current && !list.some(tz => tz.value === current)) {
+    list.push({ value: current, label: current });
+  }
+  for (const tz of list) {
     const opt = document.createElement("option");
-    opt.value = z;
-    const off = formatOffset(tzOffsetMinutes(z, new Date()));
-    opt.textContent = `${z} (UTC${off})`;
-    if (z === current) opt.selected = true;
+    opt.value = tz.value;
+    const off = formatOffset(tzOffsetMinutes(tz.value, new Date()));
+    opt.textContent = `${tz.label} (UTC${off})`;
+    if (tz.value === current) opt.selected = true;
     sel.appendChild(opt);
   }
+}
+
+function tzLabel(value) {
+  const found = TIMEZONES.find(t => t.value === value);
+  return found ? found.label : value;
 }
 
 function minutesToLabel(min) {
