@@ -503,12 +503,13 @@ function renderTimeline() {
     rowClass: "self",
   }));
 
-  // Friend rows (thin)
-  const allIntervals = [selfIntervals];
+  // Friend rows (thin) + per-friend pair overlap with self
+  const friendData = [];
   for (const f of state.friends) {
     const p = f.profile;
     const intervals = computeIntervalsInViewer(p, anchor);
-    allIntervals.push(intervals);
+    const pair = intersectIntervals(selfIntervals, intervals);
+    friendData.push({ profile: p, intervals, pair });
     timeline.appendChild(makeTimelineRow({
       label: p.username,
       color: p.color,
@@ -518,23 +519,28 @@ function renderTimeline() {
     }));
   }
 
-  // Overlap row
-  const overlaps = computeOverlap(allIntervals);
+  // Union of pair overlaps = "你和任意好友都在线"
+  const anyOverlap = mergeIntervals(friendData.flatMap(d => d.pair.map(i => i.slice())));
+  // Everyone overlap (only meaningful with 2+ friends)
+  const allOverlap = friendData.length >= 2
+    ? computeOverlap([selfIntervals, ...friendData.map(d => d.intervals)])
+    : null;
+
   if (state.friends.length >= 1) {
     const spacer = document.createElement("div");
     spacer.className = "tl-row spacer-row";
     timeline.appendChild(spacer);
     timeline.appendChild(makeTimelineRow({
-      label: "共同在线",
+      label: "和好友重合",
       color: "var(--overlap)",
-      intervals: overlaps,
+      intervals: anyOverlap,
       anchor,
       variant: "overlap-track",
       rowClass: "overlap-row",
     }));
   }
 
-  renderOverlapList(overlaps);
+  renderOverlapList(friendData, allOverlap);
 }
 
 function makeTimelineRow({ label, color, intervals, anchor, variant, rowClass = "" }) {
@@ -565,23 +571,59 @@ function makeTimelineRow({ label, color, intervals, anchor, variant, rowClass = 
   return row;
 }
 
-function renderOverlapList(overlaps) {
+function renderOverlapList(friendData, allOverlap) {
   const el = document.getElementById("overlapList");
   el.innerHTML = "";
-  if (state.friends.length < 1) {
+  if (friendData.length < 1) {
     el.innerHTML = '<div class="overlap-chip empty">添加好友后这里会显示共同在线的时段。</div>';
     return;
   }
-  if (overlaps.length === 0) {
-    el.innerHTML = '<div class="overlap-chip empty">今天你和好友们没有完全重合的时段 😅</div>';
+
+  const anyPair = friendData.some(d => d.pair.length > 0);
+  if (!anyPair) {
+    el.innerHTML = '<div class="overlap-chip empty">今天你和好友们都错开了，明天再约 😅</div>';
     return;
   }
-  for (const [s, e] of overlaps) {
-    const chip = document.createElement("div");
-    chip.className = "overlap-chip";
-    chip.textContent = `${minutesToLabel(s)} – ${minutesToLabel(e)} · ${formatDuration(e - s)}`;
-    el.appendChild(chip);
+
+  if (allOverlap && allOverlap.length > 0) {
+    const group = document.createElement("div");
+    group.className = "overlap-group all";
+    const head = document.createElement("div");
+    head.className = "overlap-group-title";
+    head.textContent = "所有人都在线";
+    group.appendChild(head);
+    const chips = document.createElement("div");
+    chips.className = "overlap-chip-row";
+    for (const [s, e] of allOverlap) {
+      chips.appendChild(makeOverlapChip(s, e, "all"));
+    }
+    group.appendChild(chips);
+    el.appendChild(group);
   }
+
+  for (const d of friendData) {
+    if (d.pair.length === 0) continue;
+    const group = document.createElement("div");
+    group.className = "overlap-group";
+    const head = document.createElement("div");
+    head.className = "overlap-group-title";
+    head.innerHTML = `<span class="dot-color" style="background:${escapeAttr(d.profile.color)}"></span>和 ${escapeHtml(d.profile.username)}`;
+    group.appendChild(head);
+    const chips = document.createElement("div");
+    chips.className = "overlap-chip-row";
+    for (const [s, e] of d.pair) {
+      chips.appendChild(makeOverlapChip(s, e));
+    }
+    group.appendChild(chips);
+    el.appendChild(group);
+  }
+}
+
+function makeOverlapChip(s, e, kind = "") {
+  const chip = document.createElement("div");
+  chip.className = "overlap-chip" + (kind ? " " + kind : "");
+  chip.textContent = `${minutesToLabel(s)} – ${minutesToLabel(e)} · ${formatDuration(e - s)}`;
+  return chip;
 }
 
 function addNowMarker(track, anchor, isMain) {

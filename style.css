@@ -443,7 +443,18 @@ button.success {
 .tl-row.overlap-row .tl-label { color: var(--overlap); font-weight: 600; }
 .tl-row.spacer-row { height: 8px; }
 
-.overlap-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.overlap-list { display: flex; flex-direction: column; gap: 14px; }
+.overlap-group { display: flex; flex-direction: column; gap: 8px; }
+.overlap-group-title {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; color: var(--muted); font-weight: 500;
+}
+.overlap-group.all .overlap-group-title { color: var(--overlap); font-weight: 600; }
+.overlap-group-title .dot-color {
+  width: 10px; height: 10px; border-radius: 50%;
+  display: inline-block;
+}
+.overlap-chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .overlap-chip {
   background: linear-gradient(135deg, rgba(255, 207, 74, 0.12), rgba(255, 207, 74, 0.03));
   border: 1px solid rgba(255, 207, 74, 0.3);
@@ -454,6 +465,11 @@ button.success {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-variant-numeric: tabular-nums;
   font-weight: 500;
+}
+.overlap-chip.all {
+  background: linear-gradient(135deg, rgba(255, 207, 74, 0.22), rgba(255, 207, 74, 0.08));
+  border-color: rgba(255, 207, 74, 0.55);
+  box-shadow: 0 0 14px rgba(255, 207, 74, 0.18);
 }
 .overlap-chip.empty {
   color: var(--muted);
