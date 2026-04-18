@@ -134,6 +134,12 @@ function bindAuthUI() {
   document.getElementById("onboardingForm").addEventListener("submit", onOnboardingSave);
   document.getElementById("addFriendForm").addEventListener("submit", onAddFriend);
   document.getElementById("meCodePill").addEventListener("click", copyMyCode);
+  document.querySelectorAll(".add-period").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const list = document.getElementById(btn.dataset.target);
+      list.appendChild(makePeriodRow("19:00", "23:00"));
+    });
+  });
 }
 
 function switchTab(name) {
@@ -217,8 +223,7 @@ function showOnboarding() {
   document.getElementById("obFriendCode").textContent = state.profile.friend_code;
   fillTimezoneSelect(form.timezone, state.profile.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
   form.username.value = state.profile.username;
-  form.active_start.value = state.profile.active_start || "19:00";
-  form.active_end.value = state.profile.active_end || "23:00";
+  renderPeriodInputs("obPeriodsList", getActivePeriods(state.profile));
   form.color.value = state.profile.color || "#4f8cff";
   showView("onboarding");
 }
@@ -228,12 +233,19 @@ async function onOnboardingSave(e) {
   const fd = new FormData(e.target);
   const err = document.getElementById("onboardingError");
   err.hidden = true;
+  const periods = collectPeriods("obPeriodsList");
+  if (periods.length === 0) {
+    err.textContent = "请至少添加一个活跃时段";
+    err.hidden = false;
+    return;
+  }
   try {
     await updateProfile({
       username: fd.get("username").trim(),
       timezone: fd.get("timezone"),
-      active_start: fd.get("active_start"),
-      active_end: fd.get("active_end"),
+      active_periods: periods,
+      active_start: periods[0].start,
+      active_end: periods[0].end,
       color: fd.get("color"),
     });
     markOnboarded();
@@ -253,8 +265,7 @@ function openSettings() {
   const form = document.getElementById("settingsForm");
   fillTimezoneSelect(form.timezone, state.profile.timezone);
   form.username.value = state.profile.username;
-  form.active_start.value = state.profile.active_start;
-  form.active_end.value = state.profile.active_end;
+  renderPeriodInputs("settingsPeriodsList", getActivePeriods(state.profile));
   form.color.value = state.profile.color;
   document.getElementById("settingsError").hidden = true;
   document.getElementById("settingsModal").hidden = false;
@@ -268,12 +279,19 @@ async function onSaveSettings(e) {
   const fd = new FormData(e.target);
   const err = document.getElementById("settingsError");
   err.hidden = true;
+  const periods = collectPeriods("settingsPeriodsList");
+  if (periods.length === 0) {
+    err.textContent = "请至少添加一个活跃时段";
+    err.hidden = false;
+    return;
+  }
   try {
     await updateProfile({
       username: fd.get("username").trim(),
       timezone: fd.get("timezone"),
-      active_start: fd.get("active_start"),
-      active_end: fd.get("active_end"),
+      active_periods: periods,
+      active_start: periods[0].start,
+      active_end: periods[0].end,
       color: fd.get("color"),
     });
     closeSettings();
@@ -308,7 +326,7 @@ async function loadFriends() {
   if (otherIds.size > 0) {
     const { data: profs, error: pErr } = await supabase
       .from("profiles")
-      .select("id, username, friend_code, timezone, active_start, active_end, color")
+      .select("id, username, friend_code, timezone, active_start, active_end, active_periods, color")
       .in("id", [...otherIds]);
     if (pErr) throw pErr;
     for (const p of profs) profilesById[p.id] = p;
@@ -392,7 +410,7 @@ function renderMain() {
   const offset = formatOffset(tzOffsetMinutes(state.profile.timezone, new Date()));
   const nowLocal = formatTimeIn(state.profile.timezone, new Date(), state.use24h);
   document.getElementById("selfMeta").textContent =
-    `${tzLabel(state.profile.timezone)} (UTC${offset}) · 当地现在 ${nowLocal} · 活跃 ${state.profile.active_start}–${state.profile.active_end}`;
+    `${tzLabel(state.profile.timezone)} (UTC${offset}) · 当地现在 ${nowLocal} · 活跃 ${formatPeriods(getActivePeriods(state.profile))}`;
 
   renderTimeline();
   renderFriendList();
@@ -415,7 +433,7 @@ function renderFriendList() {
       <span class="swatch" style="background:${escapeAttr(p.color)}"></span>
       <div>
         <div class="name">${escapeHtml(p.username)}</div>
-        <div class="meta">${escapeHtml(tzLabel(p.timezone))} (UTC${offset}) · 当地现在 ${now} · 活跃 ${escapeHtml(p.active_start)}–${escapeHtml(p.active_end)}</div>
+        <div class="meta">${escapeHtml(tzLabel(p.timezone))} (UTC${offset}) · 当地现在 ${now} · 活跃 ${escapeHtml(formatPeriods(getActivePeriods(p)))}</div>
       </div>
       <span class="spacer"></span>
       <button class="ghost small" data-act="del">删除</button>
@@ -640,21 +658,24 @@ function addNowMarker(track, anchor, isMain) {
 function computeIntervalsInViewer(person, anchor) {
   const anchorMs = anchor.getTime();
   const dayMs = 24 * 60 * 60 * 1000;
-  const [sh, sm] = person.active_start.split(":").map(Number);
-  const [eh, em] = person.active_end.split(":").map(Number);
-  const startMin = sh * 60 + sm;
-  let endMin = eh * 60 + em;
-  if (endMin <= startMin) endMin += 24 * 60;
-
+  const periods = getActivePeriods(person);
   const out = [];
-  for (const dayOffset of [-1, 0, 1]) {
-    const refMs = anchorMs + dayOffset * dayMs;
-    const localMidnight = localMidnightMsForTz(refMs, person.timezone);
-    const absStart = localMidnight + startMin * 60000;
-    const absEnd = localMidnight + endMin * 60000;
-    const s = Math.max(absStart, anchorMs);
-    const e = Math.min(absEnd, anchorMs + dayMs);
-    if (e > s) out.push([(s - anchorMs) / 60000, (e - anchorMs) / 60000]);
+  for (const period of periods) {
+    const [sh, sm] = period.start.split(":").map(Number);
+    const [eh, em] = period.end.split(":").map(Number);
+    const startMin = sh * 60 + sm;
+    let endMin = eh * 60 + em;
+    if (endMin <= startMin) endMin += 24 * 60;
+
+    for (const dayOffset of [-1, 0, 1]) {
+      const refMs = anchorMs + dayOffset * dayMs;
+      const localMidnight = localMidnightMsForTz(refMs, person.timezone);
+      const absStart = localMidnight + startMin * 60000;
+      const absEnd = localMidnight + endMin * 60000;
+      const s = Math.max(absStart, anchorMs);
+      const e = Math.min(absEnd, anchorMs + dayMs);
+      if (e > s) out.push([(s - anchorMs) / 60000, (e - anchorMs) / 60000]);
+    }
   }
   return mergeIntervals(out);
 }
@@ -762,6 +783,62 @@ function fillTimezoneSelect(sel, current) {
 function tzLabel(value) {
   const found = TIMEZONES.find(t => t.value === value);
   return found ? found.label : value;
+}
+
+function normalizeTime(t) {
+  if (!t) return t;
+  return String(t).slice(0, 5);
+}
+
+function getActivePeriods(profile) {
+  if (Array.isArray(profile.active_periods) && profile.active_periods.length > 0) {
+    return profile.active_periods.map(p => ({
+      start: normalizeTime(p.start),
+      end: normalizeTime(p.end),
+    }));
+  }
+  if (profile.active_start && profile.active_end) {
+    return [{ start: normalizeTime(profile.active_start), end: normalizeTime(profile.active_end) }];
+  }
+  return [{ start: "19:00", end: "23:00" }];
+}
+
+function formatPeriods(periods) {
+  return periods.map(p => `${p.start}–${p.end}`).join(" / ");
+}
+
+function makePeriodRow(start, end) {
+  const row = document.createElement("div");
+  row.className = "period-row";
+  row.innerHTML = `
+    <input type="time" class="p-start" value="${escapeAttr(normalizeTime(start) || "19:00")}" required />
+    <span class="period-sep">–</span>
+    <input type="time" class="p-end" value="${escapeAttr(normalizeTime(end) || "23:00")}" required />
+    <button type="button" class="ghost icon remove-period" title="删除时段">✕</button>
+  `;
+  row.querySelector(".remove-period").addEventListener("click", () => {
+    const list = row.parentElement;
+    if (list.children.length > 1) row.remove();
+    else toast("至少保留一个活跃时段", "error");
+  });
+  return row;
+}
+
+function renderPeriodInputs(containerId, periods) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = "";
+  for (const p of periods) container.appendChild(makePeriodRow(p.start, p.end));
+}
+
+function collectPeriods(containerId) {
+  const container = document.getElementById(containerId);
+  const out = [];
+  for (const row of container.querySelectorAll(".period-row")) {
+    const start = row.querySelector(".p-start").value;
+    const end = row.querySelector(".p-end").value;
+    if (start && end) out.push({ start, end });
+  }
+  return out;
 }
 
 function minutesToLabel(min) {

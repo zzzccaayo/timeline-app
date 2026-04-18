@@ -471,6 +471,46 @@ button.success {
   border-color: rgba(255, 207, 74, 0.55);
   box-shadow: 0 0 14px rgba(255, 207, 74, 0.18);
 }
+
+/* Active periods editor */
+.periods-section {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 14px;
+  background: var(--panel-2);
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+}
+.periods-section-head {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 13px; color: var(--muted); font-weight: 500;
+}
+.periods-list { display: flex; flex-direction: column; gap: 8px; }
+.period-row {
+  display: flex; align-items: center; gap: 10px;
+}
+.period-row input[type="time"] {
+  flex: 1;
+  padding: 8px 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 14px;
+}
+.period-row input[type="time"]:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.period-sep { color: var(--muted); }
+.ghost.icon {
+  width: 30px; height: 30px;
+  padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 13px;
+}
+.ghost.small { font-size: 12px; padding: 4px 10px; }
+.add-period { font-weight: 500; }
 .overlap-chip.empty {
   color: var(--muted);
   font-family: inherit;

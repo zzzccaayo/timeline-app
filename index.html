@@ -56,12 +56,15 @@
       <form id="onboardingForm" class="panel form-panel">
         <label>昵称<input type="text" name="username" required minlength="1" maxlength="24" /></label>
         <label>时区<select name="timezone" required></select></label>
-        <div class="row">
-          <label>活跃开始<input type="time" name="active_start" value="19:00" required /></label>
-          <label>活跃结束<input type="time" name="active_end" value="23:00" required /></label>
+        <div class="periods-section">
+          <div class="periods-section-head">
+            <span>活跃时段</span>
+            <button type="button" class="ghost small add-period" data-target="obPeriodsList">+ 添加时段</button>
+          </div>
+          <div class="periods-list" id="obPeriodsList"></div>
         </div>
         <label>在时间轴上显示的颜色<input type="color" name="color" value="#4f8cff" /></label>
-        <p class="hint">活跃时段可跨午夜，例如 22:00 – 02:00。</p>
+        <p class="hint">活跃时段可跨午夜，例如 22:00 – 02:00；可以加多个时段。</p>
         <p id="onboardingError" class="error" hidden></p>
         <button type="submit">保存并进入</button>
       </form>
@@ -132,9 +135,12 @@
       <form id="settingsForm" class="form-panel">
         <label>昵称<input type="text" name="username" required minlength="1" maxlength="24" /></label>
         <label>时区<select name="timezone" required></select></label>
-        <div class="row">
-          <label>活跃开始<input type="time" name="active_start" required /></label>
-          <label>活跃结束<input type="time" name="active_end" required /></label>
+        <div class="periods-section">
+          <div class="periods-section-head">
+            <span>活跃时段</span>
+            <button type="button" class="ghost small add-period" data-target="settingsPeriodsList">+ 添加时段</button>
+          </div>
+          <div class="periods-list" id="settingsPeriodsList"></div>
         </div>
         <label>颜色<input type="color" name="color" /></label>
         <p id="settingsError" class="error" hidden></p>
