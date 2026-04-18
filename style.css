@@ -323,22 +323,22 @@ button.success {
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
-  margin-bottom: 18px;
+  margin-bottom: 28px;
   flex-wrap: wrap;
 }
 .timeline-header h2 { margin: 0; }
 .legend { color: var(--muted); font-size: 12px; display: flex; gap: 6px; align-items: center; }
-.legend .dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: var(--accent); }
-.legend .dot.overlap { background: var(--overlap); box-shadow: 0 0 8px var(--overlap-glow); }
-.legend .dot.now { background: var(--now); border-radius: 50%; box-shadow: 0 0 8px var(--now-glow); }
+.legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: var(--accent); }
+.legend .dot.overlap { background: var(--overlap); }
+.legend .dot.now { background: var(--now); border-radius: 50%; }
 .legend .sep { margin: 0 6px; }
 
-.timeline { display: grid; gap: 6px; }
+.timeline { display: grid; gap: 10px; }
 .tl-header, .tl-row {
   display: grid;
-  grid-template-columns: 150px 1fr;
+  grid-template-columns: 160px 1fr;
   align-items: center;
-  gap: 14px;
+  gap: 20px;
 }
 .tl-label {
   font-size: 13px;
@@ -349,99 +349,101 @@ button.success {
   display: flex;
   align-items: center;
   gap: 8px;
+  font-weight: 500;
 }
 .tl-label .dot-color {
-  display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
   flex-shrink: 0;
-  box-shadow: 0 0 0 2px rgba(255,255,255,0.05), 0 0 10px currentColor;
 }
-.tl-hours { position: relative; height: 22px; border-bottom: 1px solid var(--border-soft); margin-bottom: 2px; }
+.tl-hours { position: relative; height: 22px; margin-bottom: 6px; }
 .tl-hours .hour {
-  position: absolute; top: 0; bottom: 0;
-  font-size: 10px; color: var(--muted);
+  position: absolute; top: 0;
+  font-size: 11px; color: var(--muted);
   transform: translateX(-50%);
-  display: flex; align-items: center;
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
 }
 .tl-hours .tick {
-  position: absolute; top: 100%;
-  width: 1px; height: 6px; background: var(--border);
+  position: absolute; top: 18px;
+  width: 1px; height: 4px; background: var(--border-soft);
   transform: translateX(-50%);
 }
 
 .tl-track {
   position: relative;
-  background: var(--panel-2);
-  border: 1px solid var(--border-soft);
-  border-radius: 8px;
-  overflow: hidden;
+  background: rgba(255, 255, 255, 0.018);
+  border-radius: 10px;
+}
+.tl-track::before {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 50%;
+  height: 1px;
+  background: var(--border-soft);
+  transform: translateY(-50%);
+  opacity: 0.6;
 }
 .tl-track.main {
-  height: 56px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background:
-    linear-gradient(180deg, #1e2546 0%, #151a30 100%);
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.04),
-    0 8px 24px rgba(0,0,0,0.35);
+  height: 80px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 14px;
 }
-.tl-track.friend { height: 26px; }
-.tl-track.overlap-track { height: 16px; }
+.tl-track.main::before { display: none; }
+.tl-track.friend {
+  height: 42px;
+}
+.tl-track.overlap-track {
+  height: 26px;
+  background: rgba(255, 207, 74, 0.04);
+}
+.tl-track.overlap-track::before { display: none; }
 
 .tl-block {
   position: absolute;
-  top: 4px; bottom: 4px;
+  top: 8px; bottom: 8px;
   border-radius: 6px;
+  background: var(--accent);
   opacity: 0.9;
-  background: linear-gradient(180deg, var(--accent) 0%, #4a7be6 100%);
-  box-shadow: 0 0 0 1px rgba(255,255,255,0.06) inset;
 }
 .tl-track.main .tl-block {
-  top: 8px; bottom: 8px;
-  border-radius: 8px;
-  box-shadow:
-    0 0 0 1px rgba(255,255,255,0.08) inset,
-    0 0 22px rgba(91, 141, 255, 0.35),
-    0 4px 12px rgba(0,0,0,0.3);
-  opacity: 0.95;
+  top: 12px; bottom: 12px;
+  border-radius: 10px;
+  opacity: 1;
 }
-.tl-track.friend .tl-block { top: 4px; bottom: 4px; border-radius: 5px; }
+.tl-track.friend .tl-block {
+  top: 9px; bottom: 9px;
+  border-radius: 6px;
+  opacity: 0.85;
+}
 .tl-track.overlap-track .tl-block {
-  top: 2px; bottom: 2px;
+  top: 5px; bottom: 5px;
   border-radius: 4px;
-  background: linear-gradient(180deg, var(--overlap) 0%, #e8b53b 100%) !important;
-  box-shadow: 0 0 16px var(--overlap-glow);
+  background: var(--overlap) !important;
+  opacity: 1;
 }
 
 .tl-now {
   position: absolute;
-  top: -4px; bottom: -4px;
-  width: 2px;
+  top: 0; bottom: 0;
+  width: 1px;
   background: var(--now);
-  box-shadow: 0 0 10px var(--now-glow);
   pointer-events: none;
-  z-index: 2;
-  animation: now-pulse 2.5s ease-in-out infinite;
+  z-index: 3;
 }
-@keyframes now-pulse {
-  0%, 100% { box-shadow: 0 0 8px var(--now-glow); }
-  50%      { box-shadow: 0 0 16px var(--now-glow); }
-}
-.tl-now.main-now { top: -6px; bottom: -6px; width: 3px; }
+.tl-now.main-now { top: -4px; bottom: -4px; }
 .tl-now::after {
   content: "";
   position: absolute;
-  top: -5px; left: 50%;
+  top: -3px; left: 50%;
   transform: translateX(-50%);
-  width: 11px; height: 11px; border-radius: 50%;
+  width: 6px; height: 6px; border-radius: 50%;
   background: var(--now);
-  box-shadow: 0 0 8px var(--now-glow);
 }
+.tl-now.main-now::after { top: -4px; width: 8px; height: 8px; }
 
 .tl-row.self .tl-label { color: var(--text); font-weight: 600; font-size: 14px; }
-.tl-row.overlap-row .tl-label { color: var(--overlap); font-weight: 600; }
-.tl-row.spacer-row { height: 8px; }
+.tl-row.overlap-row .tl-label { color: var(--overlap); font-weight: 500; font-size: 13px; }
+.tl-row.spacer-row { height: 10px; }
 
 .overlap-list { display: flex; flex-direction: column; gap: 14px; }
 .overlap-group { display: flex; flex-direction: column; gap: 8px; }
@@ -576,8 +578,10 @@ button.success {
 }
 
 @media (max-width: 640px) {
-  .tl-header, .tl-row { grid-template-columns: 96px 1fr; gap: 10px; }
-  .tl-hours .hour { font-size: 9px; }
+  .tl-header, .tl-row { grid-template-columns: 96px 1fr; gap: 12px; }
+  .tl-hours .hour { font-size: 10px; }
+  .tl-track.main { height: 64px; }
+  .tl-track.friend { height: 36px; }
   .topbar { padding: 10px 14px; flex-wrap: wrap; }
   .code-pill { padding: 5px 10px; letter-spacing: 1.5px; }
   .container { padding: 16px 14px 60px; }
