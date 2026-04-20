@@ -709,13 +709,20 @@ function appendMessage(m) {
   const emptyEl = el.querySelector(".chat-empty");
   if (emptyEl) emptyEl.remove();
   const author = state.currentGroup.members.find(p => p.id === m.user_id);
-  const isMe = m.user_id === state.session.user.id;
   const name = author ? author.username : "(未知)";
   const color = author ? author.color : "#888";
-  const ts = new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const createdMs = new Date(m.created_at).getTime();
+  const ts = new Date(createdMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+  const prev = el.lastElementChild;
+  const prevUser = prev && prev.classList.contains("msg") ? prev.getAttribute("data-user-id") : null;
+  const prevTime = prev && prev.classList.contains("msg") ? Number(prev.getAttribute("data-time")) : 0;
+  const grouped = prevUser === m.user_id && createdMs - prevTime < 5 * 60 * 1000;
 
   const item = document.createElement("div");
-  item.className = "msg" + (isMe ? " me" : "");
+  item.className = "msg" + (grouped ? " grouped" : "");
+  item.setAttribute("data-user-id", m.user_id);
+  item.setAttribute("data-time", String(createdMs));
   item.innerHTML = `
     <span class="msg-avatar" style="background:${escapeAttr(color)}">${escapeHtml(name.slice(0, 1))}</span>
     <div class="msg-body">
