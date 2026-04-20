@@ -329,6 +329,14 @@ button.success {
   flex-wrap: wrap;
 }
 .timeline-header h2 { margin: 0; }
+.timeline-right {
+  display: flex; flex-direction: column; align-items: flex-end;
+  gap: 8px;
+}
+.row-actions {
+  display: flex; gap: 10px; justify-content: space-between;
+  flex-wrap: wrap;
+}
 .legend { color: var(--muted); font-size: 12px; display: flex; gap: 6px; align-items: center; }
 .legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: var(--accent); }
 .legend .dot.overlap { background: var(--overlap); }

@@ -167,6 +167,11 @@ function bindAuthUI() {
   document.getElementById("saveChatGroupName").addEventListener("click", onRenameChatGroup);
   document.getElementById("addChatGroupMembersBtn").addEventListener("click", onAddChatGroupMembers);
   document.getElementById("leaveChatGroupBtn").addEventListener("click", onLeaveChatGroup);
+
+  document.getElementById("openOverride").addEventListener("click", openOverrideModal);
+  document.getElementById("closeOverride").addEventListener("click", closeOverrideModal);
+  document.getElementById("saveOverrideBtn").addEventListener("click", onSaveOverride);
+  document.getElementById("clearOverrideBtn").addEventListener("click", onClearOverride);
 }
 
 function switchTab(name) {
@@ -353,7 +358,7 @@ async function loadFriends() {
   if (otherIds.size > 0) {
     const { data: profs, error: pErr } = await supabase
       .from("profiles")
-      .select("id, username, friend_code, timezone, active_start, active_end, active_periods, color")
+      .select("id, username, friend_code, timezone, active_start, active_end, active_periods, override_date, override_periods, color")
       .in("id", [...otherIds]);
     if (pErr) throw pErr;
     for (const p of profs) profilesById[p.id] = p;
@@ -569,7 +574,7 @@ async function openChatGroup(gid) {
     if (memberIds.length > 0) {
       const { data: profs, error: pErr } = await supabase
         .from("profiles")
-        .select("id, username, color, timezone, active_start, active_end, active_periods")
+        .select("id, username, color, timezone, active_start, active_end, active_periods, override_date, override_periods")
         .in("id", memberIds);
       if (pErr) throw pErr;
       members = profs || [];
@@ -673,7 +678,7 @@ function renderChatMembers() {
     li.className = "chat-member";
     const offset = formatOffset(tzOffsetMinutes(m.timezone, new Date()));
     const now = formatTimeIn(m.timezone, new Date(), state.use24h);
-    const periods = formatPeriods(getActivePeriods(m));
+    const periods = formatPersonPeriods(m);
     const isMe = m.id === state.session.user.id;
     li.innerHTML = `
       <span class="swatch" style="background:${escapeAttr(m.color)}"></span>
@@ -844,6 +849,63 @@ async function refreshChatMembers() {
   renderChatMessages();
 }
 
+/* ---------- Today override ---------- */
+
+function openOverrideModal() {
+  const tz = state.profile.timezone;
+  const today = tzDateStr(Date.now(), tz);
+  const weekday = new Intl.DateTimeFormat("zh-CN", { timeZone: tz, weekday: "long" })
+    .format(new Date());
+  document.getElementById("overrideDateLabel").textContent =
+    `${tzLabel(tz)} · 今天是 ${today}（${weekday}）`;
+
+  const initial = hasActiveOverride(state.profile)
+    ? state.profile.override_periods
+    : getActivePeriods(state.profile);
+  renderPeriodInputs("overridePeriodsList", initial);
+  document.getElementById("overrideError").hidden = true;
+  document.getElementById("overrideModal").hidden = false;
+}
+
+function closeOverrideModal() {
+  document.getElementById("overrideModal").hidden = true;
+}
+
+async function onSaveOverride() {
+  const tz = state.profile.timezone;
+  const today = tzDateStr(Date.now(), tz);
+  const periods = collectPeriods("overridePeriodsList");
+  const err = document.getElementById("overrideError");
+  err.hidden = true;
+  if (periods.length === 0) {
+    err.textContent = "请至少添加一个时段（或点清除按钮）";
+    err.hidden = false;
+    return;
+  }
+  try {
+    await updateProfile({ override_date: today, override_periods: periods });
+    closeOverrideModal();
+    renderMain();
+    toast("已设置今天的临时时段", "success");
+  } catch (ex) {
+    err.textContent = ex.message || "保存失败";
+    err.hidden = false;
+  }
+}
+
+async function onClearOverride() {
+  try {
+    await updateProfile({ override_date: null, override_periods: [] });
+    closeOverrideModal();
+    renderMain();
+    toast("已恢复默认时段", "success");
+  } catch (ex) {
+    const err = document.getElementById("overrideError");
+    err.textContent = ex.message || "清除失败";
+    err.hidden = false;
+  }
+}
+
 async function onLeaveChatGroup() {
   if (!state.currentGroup) return;
   if (!confirm("确认退出这个群？离开后就看不到这里的消息了。")) return;
@@ -870,7 +932,7 @@ function renderMain() {
   const offset = formatOffset(tzOffsetMinutes(state.profile.timezone, new Date()));
   const nowLocal = formatTimeIn(state.profile.timezone, new Date(), state.use24h);
   document.getElementById("selfMeta").textContent =
-    `${tzLabel(state.profile.timezone)} (UTC${offset}) · 当地现在 ${nowLocal} · 活跃 ${formatPeriods(getActivePeriods(state.profile))}`;
+    `${tzLabel(state.profile.timezone)} (UTC${offset}) · 当地现在 ${nowLocal} · 活跃 ${formatPersonPeriods(state.profile)}`;
 
   renderTimeline();
   renderFriendList();
@@ -894,7 +956,7 @@ function renderFriendList() {
       <span class="swatch" style="background:${escapeAttr(p.color)}"></span>
       <div>
         <div class="name">${escapeHtml(p.username)}</div>
-        <div class="meta">${escapeHtml(tzLabel(p.timezone))} (UTC${offset}) · 当地现在 ${now} · 活跃 ${escapeHtml(formatPeriods(getActivePeriods(p)))}</div>
+        <div class="meta">${escapeHtml(tzLabel(p.timezone))} (UTC${offset}) · 当地现在 ${now} · 活跃 ${escapeHtml(formatPersonPeriods(p))}</div>
       </div>
       <span class="spacer"></span>
       <button class="ghost small" data-act="del">删除</button>
@@ -1119,18 +1181,18 @@ function addNowMarker(track, anchor, isMain) {
 function computeIntervalsInViewer(person, anchor) {
   const anchorMs = anchor.getTime();
   const dayMs = 24 * 60 * 60 * 1000;
-  const periods = getActivePeriods(person);
   const out = [];
-  for (const period of periods) {
-    const [sh, sm] = period.start.split(":").map(Number);
-    const [eh, em] = period.end.split(":").map(Number);
-    const startMin = sh * 60 + sm;
-    let endMin = eh * 60 + em;
-    if (endMin <= startMin) endMin += 24 * 60;
-
-    for (const dayOffset of [-1, 0, 1]) {
-      const refMs = anchorMs + dayOffset * dayMs;
-      const localMidnight = localMidnightMsForTz(refMs, person.timezone);
+  for (const dayOffset of [-1, 0, 1]) {
+    const refMs = anchorMs + dayOffset * dayMs;
+    const localMidnight = localMidnightMsForTz(refMs, person.timezone);
+    const dateStr = tzDateStr(refMs, person.timezone);
+    const periods = periodsForDate(person, dateStr);
+    for (const period of periods) {
+      const [sh, sm] = period.start.split(":").map(Number);
+      const [eh, em] = period.end.split(":").map(Number);
+      const startMin = sh * 60 + sm;
+      let endMin = eh * 60 + em;
+      if (endMin <= startMin) endMin += 24 * 60;
       const absStart = localMidnight + startMin * 60000;
       const absEnd = localMidnight + endMin * 60000;
       const s = Math.max(absStart, anchorMs);
@@ -1139,6 +1201,46 @@ function computeIntervalsInViewer(person, anchor) {
     }
   }
   return mergeIntervals(out);
+}
+
+function tzDateStr(refMs, tz) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date(refMs));
+  const m = {};
+  for (const p of parts) if (p.type !== "literal") m[p.type] = p.value;
+  return `${m.year}-${m.month}-${m.day}`;
+}
+
+function periodsForDate(person, dateStr) {
+  if (
+    person.override_date === dateStr &&
+    Array.isArray(person.override_periods) &&
+    person.override_periods.length > 0
+  ) {
+    return person.override_periods.map(p => ({
+      start: normalizeTime(p.start),
+      end: normalizeTime(p.end),
+    }));
+  }
+  return getActivePeriods(person);
+}
+
+function hasActiveOverride(person) {
+  if (!person || !person.timezone) return false;
+  const today = tzDateStr(Date.now(), person.timezone);
+  return person.override_date === today
+    && Array.isArray(person.override_periods)
+    && person.override_periods.length > 0;
+}
+
+function formatPersonPeriods(person) {
+  if (hasActiveOverride(person)) {
+    return `今天 ${formatPeriods(person.override_periods.map(p => ({
+      start: normalizeTime(p.start), end: normalizeTime(p.end),
+    })))}（临时）`;
+  }
+  return formatPeriods(getActivePeriods(person));
 }
 
 function localMidnightMsForTz(refMs, tz) {
