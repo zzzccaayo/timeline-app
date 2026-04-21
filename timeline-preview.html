@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>时间轴预览 · A+B</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" />
+<style>
+  :root{
+    --bg:#1e1f22;--panel:#2b2d31;--panel-2:#313338;--panel-3:#383a40;
+    --text:#f2f3f5;--text-dim:#dbdee1;--muted:#949ba4;
+    --accent:#5865f2;--accent-2:#4752c4;
+    --overlap:#f0b132;--now:#f23f43;
+    --border:#3f4147;--border-soft:#2e2f35;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;padding:40px 24px;
+    background:#313338;color:var(--text);
+    font-family:"Inter","Noto Sans SC",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    -webkit-font-smoothing:antialiased;
+    letter-spacing:.01em;
+  }
+  .wrap{max-width:920px;margin:0 auto;display:grid;gap:16px}
+  .panel{background:var(--panel);border:1px solid var(--border-soft);border-radius:8px;padding:22px 24px}
+  .panel-title{margin:0 0 12px;font-size:12px;color:var(--muted);font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+
+  /* ==== HERO (B) ==== */
+  .hero{
+    display:grid;gap:18px;
+    grid-template-columns:1fr auto;
+    align-items:center;
+  }
+  .hero-left h2{
+    margin:0;font-size:28px;font-weight:700;line-height:1.2;
+    background:linear-gradient(90deg,#fff,#dbdee1);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .hero-meta{margin:6px 0 0;font-size:14px;color:var(--muted)}
+  .hero-meta b{color:var(--overlap);font-weight:600}
+  .hero-label{
+    display:inline-flex;align-items:center;gap:8px;
+    font-size:12px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.08em;
+    margin-bottom:10px;
+  }
+  .pulse{
+    width:8px;height:8px;border-radius:50%;background:var(--now);
+    box-shadow:0 0 0 0 rgba(242,63,67,.6);
+    animation:pulse 1.6s ease-out infinite;
+  }
+  @keyframes pulse{
+    0%{box-shadow:0 0 0 0 rgba(242,63,67,.55)}
+    70%{box-shadow:0 0 0 10px rgba(242,63,67,0)}
+    100%{box-shadow:0 0 0 0 rgba(242,63,67,0)}
+  }
+  .stack{display:flex;align-items:center;gap:0}
+  .stack .av{margin-left:-10px;border:3px solid var(--panel)}
+  .stack .av:first-child{margin-left:0}
+  .av{
+    width:44px;height:44px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    font-weight:700;color:#fff;font-size:15px;
+    overflow:hidden;flex-shrink:0;
+  }
+  .av.sm{width:28px;height:28px;font-size:12px;border-width:2px}
+
+  /* Mini strip under hero */
+  .strip-wrap{margin-top:16px;grid-column:1 / -1}
+  .strip-scale{
+    position:relative;height:14px;margin-bottom:4px;
+    font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums;
+  }
+  .strip-scale span{position:absolute;transform:translateX(-50%)}
+  .strip{
+    position:relative;height:10px;background:var(--bg);border-radius:99px;overflow:hidden;
+  }
+  .strip-seg{
+    position:absolute;top:0;bottom:0;border-radius:99px;opacity:.9;
+  }
+  .strip-now{
+    position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--now);
+    box-shadow:0 0 8px rgba(242,63,67,.7);
+    border-radius:2px;z-index:3;
+  }
+
+  /* ==== CLOCK (A) ==== */
+  .clock-panel{padding:26px 30px}
+  .clock-grid{
+    display:grid;grid-template-columns:1fr 260px;gap:28px;align-items:center;
+  }
+  .clock-wrap{position:relative;aspect-ratio:1/1;max-width:440px;justify-self:center;width:100%}
+  .clock-wrap svg{width:100%;height:auto;display:block}
+  .clock-center{
+    position:absolute;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;pointer-events:none;
+  }
+  .clock-time{font-size:34px;font-weight:700;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
+  .clock-sub{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em;margin-top:2px;font-weight:600}
+
+  /* Legend */
+  .legend{display:flex;flex-direction:column;gap:6px}
+  .legend-row{
+    display:flex;align-items:center;gap:10px;
+    padding:8px 10px;border-radius:6px;
+    transition:background .12s;
+  }
+  .legend-row:hover{background:var(--panel-2)}
+  .legend-row .av{width:26px;height:26px;font-size:11px}
+  .legend-row.me{background:var(--panel-2)}
+  .legend-row .info{flex:1;min-width:0}
+  .legend-row .name{font-size:13px;font-weight:600}
+  .legend-row .sub{font-size:11px;color:var(--muted);margin-top:1px}
+  .legend-dot{width:3px;height:18px;border-radius:2px}
+  .legend-row .tag{
+    font-size:10px;padding:2px 6px;border-radius:4px;
+    background:rgba(35,165,90,.18);color:#3fa971;font-weight:700;
+    letter-spacing:.04em;text-transform:uppercase;
+  }
+
+  @media(max-width:720px){
+    .clock-grid{grid-template-columns:1fr}
+    .hero{grid-template-columns:1fr}
+    .hero-right{justify-self:start}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ========== HERO (B) ========== -->
+  <div class="panel hero-panel">
+    <div class="hero">
+      <div class="hero-left">
+        <div class="hero-label"><span class="pulse"></span> 此刻 · <span id="heroNow"></span></div>
+        <h2 id="heroHead"></h2>
+        <p class="hero-meta" id="heroMeta"></p>
+      </div>
+      <div class="hero-right">
+        <div class="stack" id="heroStack"></div>
+      </div>
+
+      <div class="strip-wrap">
+        <div class="strip-scale" id="stripScale"></div>
+        <div class="strip" id="strip"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== CLOCK (A) ========== -->
+  <div class="panel clock-panel">
+    <h3 class="panel-title">24 小时时间盘</h3>
+    <div class="clock-grid">
+      <div class="clock-wrap">
+        <svg viewBox="0 0 440 440" id="clock"></svg>
+        <div class="clock-center">
+          <div class="clock-time" id="clockTime"></div>
+          <div class="clock-sub" id="clockSub"></div>
+        </div>
+      </div>
+      <div class="legend" id="legend"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* ============ FAKE DATA ============ */
+const now = new Date();
+now.setHours(11, 23, 0, 0);           // 固定为 11:23 让预览稳定
+const nowMin = now.getHours()*60 + now.getMinutes();
+
+const me = {
+  id:"me", name:"我", color:"#5865f2",
+  initial:"我",
+  periods:[[540,720],[840,1080],[1260,1410]] // 09-12, 14-18, 21-23:30
+};
+const friends = [
+  { id:"alex", name:"Alex", color:"#f0b132", initial:"A",
+    periods:[[600,750],[1200,1530]] },               // 10-12:30, 20:00-25:30(cross)
+  { id:"jay",  name:"Jay",  color:"#23a55a", initial:"J",
+    periods:[[480,660],[1140,1320]] },               // 08-11, 19-22
+  { id:"mia",  name:"Mia",  color:"#eb459e", initial:"M",
+    periods:[[1320,1560]] },                         // 22-02:00(cross 26:00)
+];
+
+/* 将跨午夜的时段切分为今日可视 [0,1440] */
+function normPeriods(ps){
+  const out=[];
+  for (const [s,e] of ps){
+    if(e<=1440) out.push([s,e]);
+    else { out.push([s,1440]); out.push([0,e-1440]); }
+  }
+  return out;
+}
+me.periods = normPeriods(me.periods);
+for (const f of friends) f.periods = normPeriods(f.periods);
+
+/* 和我重合 */
+function intersect(a,b){
+  const out=[]; let i=0,j=0;
+  while(i<a.length&&j<b.length){
+    const s=Math.max(a[i][0],b[j][0]), e=Math.min(a[i][1],b[j][1]);
+    if(s<e) out.push([s,e]);
+    if(a[i][1]<b[j][1]) i++; else j++;
+  }
+  return out;
+}
+for (const f of friends) f.overlap = intersect(me.periods, f.periods);
+const anyOverlap = mergeIntervals(friends.flatMap(f=>f.overlap.map(x=>x.slice())));
+
+function mergeIntervals(arr){
+  if(!arr.length) return [];
+  arr.sort((a,b)=>a[0]-b[0]);
+  const out=[arr[0].slice()];
+  for(let k=1;k<arr.length;k++){
+    const prev=out[out.length-1], cur=arr[k];
+    if(cur[0]<=prev[1]) prev[1]=Math.max(prev[1],cur[1]);
+    else out.push(cur.slice());
+  }
+  return out;
+}
+function isOnline(person){
+  return person.periods.some(([s,e])=>s<=nowMin && nowMin<e);
+}
+function minutesRemainingTogether(){
+  // 从 now 起，anyOverlap 中最近一个正在进行的区间剩余多久（和至少一个好友）
+  for (const [s,e] of anyOverlap){
+    if (s<=nowMin && nowMin<e) return e-nowMin;
+  }
+  return 0;
+}
+
+/* ============ HERO (B) ============ */
+const onlineFriends = friends.filter(isOnline);
+document.getElementById("heroNow").textContent =
+  String(now.getHours()).padStart(2,"0")+":"+String(now.getMinutes()).padStart(2,"0");
+
+const headEl = document.getElementById("heroHead");
+const metaEl = document.getElementById("heroMeta");
+if (onlineFriends.length === 0) {
+  headEl.textContent = "现在没人和你一起在线";
+  metaEl.innerHTML = "下一次重合：<b>19:00</b> 和 Jay";
+} else {
+  const names = onlineFriends.map(f=>f.name).join("、");
+  headEl.textContent = `你和 ${names} 正在一起`;
+  const rem = minutesRemainingTogether();
+  const h = Math.floor(rem/60), m = rem%60;
+  const remText = h>0 ? `${h} 小时 ${m} 分钟` : `${m} 分钟`;
+  metaEl.innerHTML = `还能一起约 <b>${remText}</b> · 之后 14:00 你会继续在线`;
+}
+
+const stack = document.getElementById("heroStack");
+stack.innerHTML = "";
+const stackPeople = [me, ...onlineFriends, ...friends.filter(f=>!isOnline(f))].slice(0,5);
+for (const p of stackPeople){
+  const el = document.createElement("span");
+  el.className = "av";
+  el.style.background = p.color;
+  el.textContent = p.initial;
+  el.title = p.name;
+  stack.appendChild(el);
+}
+
+/* Strip (mini self + overlap bar) */
+const strip = document.getElementById("strip");
+function pct(m){return (m/1440)*100}
+for (const [s,e] of me.periods){
+  const seg = document.createElement("div");
+  seg.className="strip-seg";
+  seg.style.left = pct(s)+"%";
+  seg.style.width = pct(e-s)+"%";
+  seg.style.background = me.color;
+  seg.style.opacity = .35;
+  strip.appendChild(seg);
+}
+for (const [s,e] of anyOverlap){
+  const seg = document.createElement("div");
+  seg.className="strip-seg";
+  seg.style.left = pct(s)+"%";
+  seg.style.width = pct(e-s)+"%";
+  seg.style.background = "var(--overlap)";
+  seg.style.opacity = 1;
+  strip.appendChild(seg);
+}
+const nowMark = document.createElement("div");
+nowMark.className = "strip-now";
+nowMark.style.left = `calc(${pct(nowMin)}% - 1px)`;
+strip.appendChild(nowMark);
+
+const scale = document.getElementById("stripScale");
+for (const h of [0,6,12,18,24]){
+  const s = document.createElement("span");
+  s.style.left = pct(h*60)+"%";
+  s.textContent = String(h).padStart(2,"0");
+  scale.appendChild(s);
+}
+
+/* ============ CLOCK (A) ============ */
+const cx=220, cy=220;
+const R_OUT = 205;   // outer tick ring
+const R_NOW = 190;
+const rings = [
+  // 外到内: 重合高亮 > 自己 > 好友们
+  { r:178, thick:12, person:{...me, periods:me.periods, color:me.color}, isSelf:true },
+];
+friends.forEach((f,i)=>rings.push({ r:160 - i*18, thick:11, person:f }));
+
+const svg = document.getElementById("clock");
+function polar(r,deg){
+  const rad = (deg-90)*Math.PI/180;
+  return [cx + r*Math.cos(rad), cy + r*Math.sin(rad)];
+}
+function arc(r, a1, a2){
+  if (a2-a1 < 0.3) return "";
+  const [x1,y1] = polar(r,a2);
+  const [x2,y2] = polar(r,a1);
+  const large = (a2-a1) > 180 ? 1 : 0;
+  return `M ${x1} ${y1} A ${r} ${r} 0 ${large} 0 ${x2} ${y2}`;
+}
+function minToDeg(m){return (m/1440)*360}
+
+let svgHTML = "";
+
+// soft rings backdrop
+for (const ring of rings){
+  svgHTML += `<circle cx="${cx}" cy="${cy}" r="${ring.r}" fill="none" stroke="rgba(255,255,255,.035)" stroke-width="${ring.thick+2}"/>`;
+}
+// hour ticks
+for (let h=0;h<24;h++){
+  const [x1,y1]=polar(R_OUT, h*15);
+  const [x2,y2]=polar(R_OUT-(h%6===0?14:6), h*15);
+  svgHTML += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${h%6===0?'#6a6d73':'#3f4147'}" stroke-width="${h%6===0?2:1}" stroke-linecap="round"/>`;
+}
+// hour numbers at 0/6/12/18
+for (const h of [0,6,12,18]){
+  const [tx,ty]=polar(R_OUT+16, h*15);
+  svgHTML += `<text x="${tx}" y="${ty+4}" fill="var(--muted)" text-anchor="middle" font-size="11" font-weight="600" style="letter-spacing:.05em">${String(h).padStart(2,"0")}</text>`;
+}
+
+// person arcs (outer = self, inner = friends)
+for (const ring of rings){
+  const col = ring.person.color;
+  for (const [s,e] of ring.person.periods){
+    const d = arc(ring.r, minToDeg(s), minToDeg(e));
+    if (!d) continue;
+    svgHTML += `<path d="${d}" stroke="${col}" stroke-width="${ring.thick}" stroke-linecap="round" fill="none" opacity="${ring.isSelf?1:0.85}"/>`;
+  }
+}
+// overlap glow on outermost (slightly outside self ring)
+for (const [s,e] of anyOverlap){
+  const d = arc(R_NOW+4, minToDeg(s), minToDeg(e));
+  if (!d) continue;
+  svgHTML += `<path d="${d}" stroke="var(--overlap)" stroke-width="6" stroke-linecap="round" fill="none" opacity=".95" filter="url(#glow)"/>`;
+}
+
+// now hand
+const [hx,hy] = polar(R_NOW+10, minToDeg(nowMin));
+svgHTML += `<line x1="${cx}" y1="${cy}" x2="${hx}" y2="${hy}" stroke="var(--now)" stroke-width="2" stroke-linecap="round" opacity=".9"/>`;
+svgHTML += `<circle cx="${hx}" cy="${hy}" r="5" fill="var(--now)"/>`;
+svgHTML += `<circle cx="${cx}" cy="${cy}" r="3" fill="var(--now)"/>`;
+
+// glow filter
+svgHTML = `
+<defs>
+  <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+    <feGaussianBlur stdDeviation="3" result="b"/>
+    <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+</defs>` + svgHTML;
+
+svg.innerHTML = svgHTML;
+
+document.getElementById("clockTime").textContent =
+  String(now.getHours()).padStart(2,"0")+":"+String(now.getMinutes()).padStart(2,"0");
+const onCount = onlineFriends.length;
+document.getElementById("clockSub").textContent = onCount>0 ? `${onCount} 位好友在线` : "暂无好友在线";
+
+/* Legend */
+const legend = document.getElementById("legend");
+const people = [me, ...friends];
+for (const p of people){
+  const row = document.createElement("div");
+  row.className = "legend-row" + (p.id==="me"?" me":"");
+  const online = p.id==="me" ? isOnline(me) : isOnline(p);
+  row.innerHTML = `
+    <span class="av" style="background:${p.color}">${p.initial}</span>
+    <span class="legend-dot" style="background:${p.color}"></span>
+    <div class="info">
+      <div class="name">${p.name}${p.id==="me"?' <span class="tag" style="background:rgba(88,101,242,.2);color:#a5aeff">我</span>':''}</div>
+      <div class="sub">${formatPeriods(p.periods)}</div>
+    </div>
+    ${online?'<span class="tag">在线</span>':''}
+  `;
+  legend.appendChild(row);
+}
+function pad(n){return String(n).padStart(2,"0")}
+function formatPeriods(ps){
+  return ps.map(([s,e])=>`${pad(Math.floor(s/60))}:${pad(s%60)}–${pad(Math.floor(e/60))}:${pad(e%60)}`).join(" · ");
+}
+</script>
+</body>
+</html>
