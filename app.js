@@ -18,7 +18,26 @@ const state = {
   chatGroups: [],
   currentGroup: null,
   use24h: true,
+  hiddenFriends: loadHiddenFriends(),
 };
+
+function loadHiddenFriends() {
+  try {
+    const raw = localStorage.getItem("hiddenFriends");
+    return new Set(raw ? JSON.parse(raw) : []);
+  } catch { return new Set(); }
+}
+function saveHiddenFriends() {
+  try {
+    localStorage.setItem("hiddenFriends", JSON.stringify([...state.hiddenFriends]));
+  } catch {}
+}
+function toggleFriendVisible(id, visible) {
+  if (visible) state.hiddenFriends.delete(id);
+  else state.hiddenFriends.add(id);
+  saveHiddenFriends();
+  renderTimeline();
+}
 
 const views = {
   loading: document.getElementById("view-loading"),
@@ -959,7 +978,11 @@ function renderFriendList() {
     li.className = "friend-row";
     const offset = formatOffset(tzOffsetMinutes(p.timezone, new Date()));
     const now = formatTimeIn(p.timezone, new Date(), state.use24h);
+    const visible = !state.hiddenFriends.has(p.id);
     li.innerHTML = `
+      <label class="friend-toggle" title="在时间轴上显示">
+        <input type="checkbox" data-act="toggle" ${visible ? "checked" : ""} />
+      </label>
       <span class="swatch" style="background:${escapeAttr(p.color)}"></span>
       <div>
         <div class="name">${escapeHtml(p.username)}</div>
@@ -969,6 +992,7 @@ function renderFriendList() {
       <button class="ghost small" data-act="del">删除</button>
     `;
     li.querySelector('[data-act="del"]').addEventListener("click", () => removeFriend(p.id));
+    li.querySelector('[data-act="toggle"]').addEventListener("change", (e) => toggleFriendVisible(p.id, e.target.checked));
     ul.appendChild(li);
   }
 }
@@ -1053,7 +1077,8 @@ function renderTimeline() {
 
   // Friend rows (thin) + per-friend pair overlap with self
   const friendData = [];
-  for (const f of state.friends) {
+  const visibleFriends = state.friends.filter(f => !state.hiddenFriends.has(f.profile.id));
+  for (const f of visibleFriends) {
     const p = f.profile;
     const intervals = computeIntervalsInViewer(p, anchor);
     const pair = intersectIntervals(selfIntervals, intervals);
@@ -1074,7 +1099,7 @@ function renderTimeline() {
     ? computeOverlap([selfIntervals, ...friendData.map(d => d.intervals)])
     : null;
 
-  if (state.friends.length >= 1) {
+  if (friendData.length >= 1) {
     const spacer = document.createElement("div");
     spacer.className = "tl-row spacer-row";
     timeline.appendChild(spacer);
