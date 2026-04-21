@@ -1081,11 +1081,6 @@ function renderMain() {
   document.getElementById("meCode").textContent = state.profile.friend_code;
   paintMeAvatar();
 
-  const offset = formatOffset(tzOffsetMinutes(state.profile.timezone, new Date()));
-  const nowLocal = formatTimeIn(state.profile.timezone, new Date(), state.use24h);
-  document.getElementById("selfMeta").textContent =
-    `${tzLabel(state.profile.timezone)} (UTC${offset}) · 当地现在 ${nowLocal} · 活跃 ${formatPersonPeriods(state.profile)}`;
-
   renderTimeline();
   renderFriendList();
   renderPending();
@@ -1157,118 +1152,231 @@ function renderPending() {
   }
 }
 
-/* ---------- Timeline ---------- */
+/* ---------- Timeline (hero + radial clock) ---------- */
 
 function renderTimeline() {
-  const timeline = document.getElementById("timeline");
-  timeline.innerHTML = "";
-
   const viewerTz = state.profile.timezone;
   const anchor = startOfDayInTz(new Date(), viewerTz);
-  const totalMinutes = 24 * 60;
+  const TOTAL = 1440;
 
-  // Hour header
-  const header = document.createElement("div");
-  header.className = "tl-header";
-  const headerLabel = document.createElement("div");
-  headerLabel.className = "tl-label";
-  headerLabel.textContent = tzLabel(viewerTz);
-  const hours = document.createElement("div");
-  hours.className = "tl-hours";
-  for (let h = 0; h <= 24; h += 2) {
-    const pct = (h / 24) * 100;
-    const hourEl = document.createElement("div");
-    hourEl.className = "hour";
-    hourEl.style.left = pct + "%";
-    hourEl.textContent = state.use24h ? pad(h % 24) : hourLabel12(h);
-    hours.appendChild(hourEl);
-    const tick = document.createElement("div");
-    tick.className = "tick";
-    tick.style.left = pct + "%";
-    hours.appendChild(tick);
-  }
-  header.appendChild(headerLabel);
-  header.appendChild(hours);
-  timeline.appendChild(header);
+  const nowMs = Date.now();
+  const nowMin = Math.max(0, Math.min(TOTAL - 1, Math.floor((nowMs - anchor.getTime()) / 60000)));
 
-  // Self row (thick)
   const selfIntervals = computeIntervalsInViewer(state.profile, anchor);
-  timeline.appendChild(makeTimelineRow({
-    label: state.profile.username + " (我)",
-    color: state.profile.color,
-    intervals: selfIntervals,
-    anchor,
-    variant: "main",
-    rowClass: "self",
-  }));
-
-  // Friend rows (thin) + per-friend pair overlap with self
-  const friendData = [];
   const visibleFriends = state.friends.filter(f => !state.hiddenFriends.has(f.profile.id));
-  for (const f of visibleFriends) {
-    const p = f.profile;
-    const intervals = computeIntervalsInViewer(p, anchor);
+  const friendData = visibleFriends.map(f => {
+    const intervals = computeIntervalsInViewer(f.profile, anchor);
     const pair = intersectIntervals(selfIntervals, intervals);
-    friendData.push({ profile: p, intervals, pair });
-    timeline.appendChild(makeTimelineRow({
-      label: p.username,
-      color: p.color,
-      intervals,
-      anchor,
-      variant: "friend",
-    }));
-  }
-
-  // Union of pair overlaps = "你和任意好友都在线"
+    return { profile: f.profile, intervals, pair };
+  });
   const anyOverlap = mergeIntervals(friendData.flatMap(d => d.pair.map(i => i.slice())));
-  // Everyone overlap (only meaningful with 2+ friends)
   const allOverlap = friendData.length >= 2
     ? computeOverlap([selfIntervals, ...friendData.map(d => d.intervals)])
     : null;
 
-  if (friendData.length >= 1) {
-    const spacer = document.createElement("div");
-    spacer.className = "tl-row spacer-row";
-    timeline.appendChild(spacer);
-    timeline.appendChild(makeTimelineRow({
-      label: "和好友重合",
-      color: "var(--overlap)",
-      intervals: anyOverlap,
-      anchor,
-      variant: "overlap-track",
-      rowClass: "overlap-row",
-    }));
-  }
+  paintHero(nowMin, selfIntervals, friendData, anyOverlap);
+  paintStrip(nowMin, selfIntervals, anyOverlap);
+  paintClock(nowMin, selfIntervals, friendData, anyOverlap);
+  paintTimelineLegend(nowMin, selfIntervals, friendData);
 
   renderOverlapList(friendData, allOverlap);
 }
 
-function makeTimelineRow({ label, color, intervals, anchor, variant, rowClass = "" }) {
-  const row = document.createElement("div");
-  row.className = "tl-row " + rowClass;
+function isOnlineAt(intervals, nowMin) {
+  return intervals.some(([s, e]) => s <= nowMin && nowMin < e);
+}
+function nextStartAfter(intervals, nowMin) {
+  for (const [s] of intervals) if (s > nowMin) return s;
+  return null;
+}
+function currentRemaining(intervals, nowMin) {
+  for (const [s, e] of intervals) if (s <= nowMin && nowMin < e) return e - nowMin;
+  return 0;
+}
+function formatDuration(min) {
+  const h = Math.floor(min / 60), m = min % 60;
+  if (h <= 0) return `${m} 分钟`;
+  if (m === 0) return `${h} 小时`;
+  return `${h} 小时 ${m} 分钟`;
+}
 
-  const labelEl = document.createElement("div");
-  labelEl.className = "tl-label";
-  labelEl.innerHTML = `<span class="dot-color" style="background:${escapeAttr(color)}"></span><span>${escapeHtml(label)}</span>`;
+function paintHero(nowMin, selfIntervals, friendData, anyOverlap) {
+  document.getElementById("heroNow").textContent = minutesToLabel(nowMin);
 
-  const track = document.createElement("div");
-  track.className = "tl-track " + variant;
+  const headEl = document.getElementById("heroHead");
+  const metaEl = document.getElementById("heroMeta");
+  const onlineFriends = friendData.filter(d => isOnlineAt(d.intervals, nowMin));
+  const iAmOnline = isOnlineAt(selfIntervals, nowMin);
 
-  const totalMinutes = 24 * 60;
-  for (const [s, e] of intervals) {
-    const block = document.createElement("div");
-    block.className = "tl-block";
-    block.style.left = ((s / totalMinutes) * 100) + "%";
-    block.style.width = (((e - s) / totalMinutes) * 100) + "%";
-    if (variant !== "overlap-track") block.style.background = color;
-    block.title = `${minutesToLabel(s)} – ${minutesToLabel(e)}`;
-    track.appendChild(block);
+  if (friendData.length === 0) {
+    headEl.textContent = iAmOnline ? "你正在活跃时段" : "现在不在活跃时段";
+    metaEl.innerHTML = "添加好友后，这里会告诉你谁和你一起在线";
+  } else if (onlineFriends.length === 0) {
+    if (iAmOnline) {
+      headEl.textContent = "你在线，但还没有好友同步";
+      const next = nextStartAfter(anyOverlap, nowMin);
+      metaEl.innerHTML = next ? `下一次重合 · <b>${minutesToLabel(next)}</b>` : "今天不会和好友重合了 😅";
+    } else {
+      headEl.textContent = "现在没人在线";
+      const nextSelf = nextStartAfter(selfIntervals, nowMin);
+      metaEl.innerHTML = nextSelf ? `你的下一个活跃时段 · <b>${minutesToLabel(nextSelf)}</b>` : "今天都收工了";
+    }
+  } else {
+    const names = onlineFriends.map(d => d.profile.username).join("、");
+    if (iAmOnline) {
+      headEl.textContent = `你和 ${names} 正在一起`;
+      const rem = currentRemaining(anyOverlap, nowMin);
+      metaEl.innerHTML = rem > 0 ? `还能一起约 <b>${formatDuration(rem)}</b>` : "";
+    } else {
+      headEl.textContent = `${names} 在线，等你上线`;
+      const nextSelf = nextStartAfter(selfIntervals, nowMin);
+      metaEl.innerHTML = nextSelf ? `你 <b>${minutesToLabel(nextSelf)}</b> 起也会在线` : "";
+    }
   }
-  addNowMarker(track, anchor, variant === "main");
 
-  row.appendChild(labelEl);
-  row.appendChild(track);
-  return row;
+  const offset = formatOffset(tzOffsetMinutes(state.profile.timezone, new Date()));
+  document.getElementById("selfMeta").textContent =
+    `${tzLabel(state.profile.timezone)} (UTC${offset}) · 活跃 ${formatPersonPeriods(state.profile)}`;
+
+  const stack = document.getElementById("heroStack");
+  stack.innerHTML = "";
+  const onlineIds = new Set(onlineFriends.map(d => d.profile.id));
+  const offlineFriends = friendData.filter(d => !onlineIds.has(d.profile.id));
+  const ordered = [state.profile, ...onlineFriends.map(d => d.profile), ...offlineFriends.map(d => d.profile)];
+  for (const p of ordered.slice(0, 5)) {
+    stack.insertAdjacentHTML("beforeend", renderAvatarHTML(p));
+  }
+}
+
+function paintStrip(nowMin, selfIntervals, anyOverlap) {
+  const strip = document.getElementById("strip");
+  const scale = document.getElementById("stripScale");
+  strip.innerHTML = "";
+  scale.innerHTML = "";
+  const TOTAL = 1440;
+  const pct = (m) => (m / TOTAL) * 100;
+
+  for (const [s, e] of selfIntervals) {
+    const seg = document.createElement("div");
+    seg.className = "strip-seg";
+    seg.style.left = pct(s) + "%";
+    seg.style.width = pct(e - s) + "%";
+    seg.style.background = state.profile.color;
+    seg.style.opacity = "0.35";
+    strip.appendChild(seg);
+  }
+  for (const [s, e] of anyOverlap) {
+    const seg = document.createElement("div");
+    seg.className = "strip-seg";
+    seg.style.left = pct(s) + "%";
+    seg.style.width = pct(e - s) + "%";
+    seg.style.background = "var(--overlap)";
+    strip.appendChild(seg);
+  }
+  const now = document.createElement("div");
+  now.className = "strip-now";
+  now.style.left = `calc(${pct(nowMin)}% - 1px)`;
+  strip.appendChild(now);
+
+  for (const h of [0, 6, 12, 18, 24]) {
+    const s = document.createElement("span");
+    s.style.left = pct(h * 60) + "%";
+    s.textContent = pad(h % 24);
+    scale.appendChild(s);
+  }
+}
+
+function paintClock(nowMin, selfIntervals, friendData, anyOverlap) {
+  const svg = document.getElementById("clock");
+  const cx = 220, cy = 220;
+  const R_OUT = 205, R_GLOW = 190;
+
+  const rings = [{ r: 178, thick: 12, color: state.profile.color, intervals: selfIntervals, self: true }];
+  friendData.slice(0, 5).forEach((d, i) => {
+    rings.push({ r: 160 - i * 18, thick: 11, color: d.profile.color, intervals: d.intervals });
+  });
+
+  const polar = (r, deg) => {
+    const rad = (deg - 90) * Math.PI / 180;
+    return [cx + r * Math.cos(rad), cy + r * Math.sin(rad)];
+  };
+  const arc = (r, a1, a2) => {
+    if (a2 - a1 < 0.3) return "";
+    const [x1, y1] = polar(r, a2);
+    const [x2, y2] = polar(r, a1);
+    const large = (a2 - a1) > 180 ? 1 : 0;
+    return `M ${x1} ${y1} A ${r} ${r} 0 ${large} 0 ${x2} ${y2}`;
+  };
+  const m2d = (m) => (m / 1440) * 360;
+
+  let html = `
+    <defs>
+      <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="3" result="b"/>
+        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>`;
+
+  for (const ring of rings) {
+    html += `<circle cx="${cx}" cy="${cy}" r="${ring.r}" fill="none" stroke="rgba(255,255,255,.035)" stroke-width="${ring.thick + 2}"/>`;
+  }
+  for (let h = 0; h < 24; h++) {
+    const [x1, y1] = polar(R_OUT, h * 15);
+    const [x2, y2] = polar(R_OUT - (h % 6 === 0 ? 14 : 6), h * 15);
+    html += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${h % 6 === 0 ? "#6a6d73" : "#3f4147"}" stroke-width="${h % 6 === 0 ? 2 : 1}" stroke-linecap="round"/>`;
+  }
+  for (const h of [0, 6, 12, 18]) {
+    const [tx, ty] = polar(R_OUT + 16, h * 15);
+    html += `<text x="${tx}" y="${ty + 4}" fill="#949ba4" text-anchor="middle" font-size="11" font-weight="600" style="letter-spacing:.05em">${pad(h)}</text>`;
+  }
+  for (const ring of rings) {
+    for (const [s, e] of ring.intervals) {
+      const d = arc(ring.r, m2d(s), m2d(e));
+      if (!d) continue;
+      html += `<path d="${d}" stroke="${escapeAttr(ring.color)}" stroke-width="${ring.thick}" stroke-linecap="round" fill="none" opacity="${ring.self ? 1 : 0.85}"/>`;
+    }
+  }
+  for (const [s, e] of anyOverlap) {
+    const d = arc(R_GLOW + 4, m2d(s), m2d(e));
+    if (!d) continue;
+    html += `<path d="${d}" stroke="#f0b132" stroke-width="6" stroke-linecap="round" fill="none" opacity=".95" filter="url(#glow)"/>`;
+  }
+  const [hx, hy] = polar(R_GLOW + 10, m2d(nowMin));
+  html += `<line x1="${cx}" y1="${cy}" x2="${hx}" y2="${hy}" stroke="#f23f43" stroke-width="2" stroke-linecap="round" opacity=".9"/>`;
+  html += `<circle cx="${hx}" cy="${hy}" r="5" fill="#f23f43"/>`;
+  html += `<circle cx="${cx}" cy="${cy}" r="3" fill="#f23f43"/>`;
+
+  svg.innerHTML = html;
+
+  document.getElementById("clockTime").textContent = minutesToLabel(nowMin);
+  const online = friendData.filter(d => isOnlineAt(d.intervals, nowMin)).length;
+  document.getElementById("clockSub").textContent = online > 0 ? `${online} 位好友在线` : "暂无好友在线";
+}
+
+function paintTimelineLegend(nowMin, selfIntervals, friendData) {
+  const el = document.getElementById("timelineLegend");
+  el.innerHTML = "";
+  const people = [
+    { profile: state.profile, intervals: selfIntervals, isMe: true },
+    ...friendData.map(d => ({ profile: d.profile, intervals: d.intervals, isMe: false })),
+  ];
+  for (const p of people) {
+    const row = document.createElement("div");
+    row.className = "legend-row" + (p.isMe ? " me" : "");
+    const online = isOnlineAt(p.intervals, nowMin);
+    const av = renderAvatarHTML(p.profile);
+    const periodsText = formatPersonPeriods(p.profile) || "—";
+    row.innerHTML = `
+      ${av}
+      <span class="legend-dot" style="background:${escapeAttr(p.profile.color)}"></span>
+      <div class="info">
+        <div class="name">${escapeHtml(p.profile.username)}${p.isMe ? ' <span class="tag me-tag">我</span>' : ""}</div>
+        <div class="sub">${escapeHtml(periodsText)}</div>
+      </div>
+      ${online ? '<span class="tag">在线</span>' : ""}
+    `;
+    el.appendChild(row);
+  }
 }
 
 function renderOverlapList(friendData, allOverlap) {
@@ -1324,17 +1432,6 @@ function makeOverlapChip(s, e, kind = "") {
   chip.className = "overlap-chip" + (kind ? " " + kind : "");
   chip.textContent = `${minutesToLabel(s)} – ${minutesToLabel(e)} · ${formatDuration(e - s)}`;
   return chip;
-}
-
-function addNowMarker(track, anchor, isMain) {
-  const now = Date.now();
-  const dayMs = 24 * 60 * 60 * 1000;
-  const rel = now - anchor.getTime();
-  if (rel < 0 || rel > dayMs) return;
-  const el = document.createElement("div");
-  el.className = "tl-now" + (isMain ? " main-now" : "");
-  el.style.left = ((rel / dayMs) * 100) + "%";
-  track.appendChild(el);
 }
 
 function computeIntervalsInViewer(person, anchor) {

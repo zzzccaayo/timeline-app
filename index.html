@@ -102,22 +102,37 @@
     </header>
 
     <main class="container">
-      <section class="panel">
-        <div class="timeline-header">
-          <div>
-            <h2 class="panel-title">我的时间轴</h2>
+      <section class="panel hero-panel">
+        <div class="hero">
+          <div class="hero-left">
+            <div class="hero-label"><span class="pulse"></span> 此刻 · <span id="heroNow"></span></div>
+            <h2 id="heroHead"></h2>
+            <p class="hero-meta" id="heroMeta"></p>
             <p class="hint" id="selfMeta"></p>
           </div>
-          <div class="timeline-right">
-            <button id="openOverride" class="ghost small">临时调整今天</button>
-            <div class="legend">
-              <span class="dot now"></span> 现在
-              <span class="sep">·</span>
-              <span class="dot overlap"></span> 和好友重合
-            </div>
+          <div class="hero-right">
+            <div class="stack" id="heroStack"></div>
+            <button id="openOverride" class="ghost small hero-override">临时调整今天</button>
+          </div>
+          <div class="strip-wrap">
+            <div class="strip-scale" id="stripScale"></div>
+            <div class="strip" id="strip"></div>
           </div>
         </div>
-        <div id="timeline" class="timeline"></div>
+      </section>
+
+      <section class="panel clock-panel">
+        <h2 class="panel-title">24 小时时间盘</h2>
+        <div class="clock-grid">
+          <div class="clock-wrap">
+            <svg viewBox="0 0 440 440" id="clock"></svg>
+            <div class="clock-center">
+              <div class="clock-time" id="clockTime"></div>
+              <div class="clock-sub" id="clockSub"></div>
+            </div>
+          </div>
+          <div class="legend" id="timelineLegend"></div>
+        </div>
       </section>
 
       <section class="panel">
