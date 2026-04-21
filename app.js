@@ -157,6 +157,16 @@ function bindAuthUI() {
   document.getElementById("closeSettings").addEventListener("click", closeSettings);
   document.getElementById("settingsForm").addEventListener("submit", onSaveSettings);
   document.getElementById("onboardingForm").addEventListener("submit", onOnboardingSave);
+  bindAvatarPicker(
+    "ob", "obAvatarInput", "obAvatarPreview", "obAvatarRemove",
+    () => document.forms["onboardingForm"]?.color?.value || "#4f8cff",
+    () => document.forms["onboardingForm"]?.username?.value || state.profile?.username || "?"
+  );
+  bindAvatarPicker(
+    "settings", "settingsAvatarInput", "settingsAvatarPreview", "settingsAvatarRemove",
+    () => document.forms["settingsForm"]?.color?.value || "#4f8cff",
+    () => document.forms["settingsForm"]?.username?.value || state.profile?.username || "?"
+  );
   document.getElementById("addFriendForm").addEventListener("submit", onAddFriend);
   document.getElementById("meCodePill").addEventListener("click", copyMyCode);
   document.querySelectorAll(".add-period").forEach(btn => {
@@ -266,6 +276,96 @@ async function updateProfile(updates) {
   return data;
 }
 
+/* ---------- Avatar upload ---------- */
+
+const avatarDraft = { ob: undefined, settings: undefined };
+// undefined = keep current; null = remove; string = new public URL
+
+async function uploadAvatarFile(file) {
+  if (!file) return null;
+  if (!file.type.startsWith("image/")) throw new Error("请选择图片文件");
+  if (file.size > 5 * 1024 * 1024) throw new Error("图片请小于 5MB");
+  const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
+  const uid = state.session.user.id;
+  const path = `${uid}/${Date.now()}.${ext}`;
+  const { error } = await supabase.storage.from("avatars").upload(path, file, {
+    cacheControl: "3600",
+    upsert: true,
+    contentType: file.type,
+  });
+  if (error) throw error;
+  const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+  return data.publicUrl;
+}
+
+function avatarInitial(name) {
+  return name && name.length > 0 ? name.slice(0, 1).toUpperCase() : "?";
+}
+
+function paintMeAvatar() {
+  const el = document.getElementById("meAvatar");
+  if (!el || !state.profile) return;
+  const p = state.profile;
+  if (p.avatar_url) {
+    el.innerHTML = `<img src="${escapeAttr(p.avatar_url)}" alt="" />`;
+    el.style.background = "";
+  } else {
+    el.textContent = avatarInitial(p.username);
+    el.style.background = p.color || "#888";
+  }
+}
+
+function renderAvatarHTML(person, extraClass = "") {
+  const color = (person && person.color) || "#888";
+  const name = (person && person.username) || "?";
+  const url = person && person.avatar_url;
+  const cls = "av " + extraClass;
+  if (url) {
+    return `<span class="${cls}"><img src="${escapeAttr(url)}" alt="" loading="lazy" /></span>`;
+  }
+  return `<span class="${cls}" style="background:${escapeAttr(color)}">${escapeHtml(avatarInitial(name))}</span>`;
+}
+
+function paintAvatarPreview(previewEl, removeBtnEl, url, color, name) {
+  previewEl.innerHTML = "";
+  if (url) {
+    const img = document.createElement("img");
+    img.src = url;
+    img.alt = "";
+    previewEl.appendChild(img);
+    previewEl.style.background = "";
+    if (removeBtnEl) removeBtnEl.hidden = false;
+  } else {
+    previewEl.textContent = avatarInitial(name);
+    previewEl.style.background = color || "var(--panel-3)";
+    if (removeBtnEl) removeBtnEl.hidden = true;
+  }
+}
+
+function bindAvatarPicker(kind, inputId, previewId, removeId, getColor, getName) {
+  const input = document.getElementById(inputId);
+  const preview = document.getElementById(previewId);
+  const removeBtn = document.getElementById(removeId);
+  input.addEventListener("change", async (e) => {
+    const file = e.target.files && e.target.files[0];
+    input.value = "";
+    if (!file) return;
+    preview.textContent = "…";
+    try {
+      const url = await uploadAvatarFile(file);
+      avatarDraft[kind] = url;
+      paintAvatarPreview(preview, removeBtn, url, getColor(), getName());
+    } catch (err) {
+      paintAvatarPreview(preview, removeBtn, state.profile.avatar_url, getColor(), getName());
+      toast(err.message || "上传失败", "error");
+    }
+  });
+  removeBtn.addEventListener("click", () => {
+    avatarDraft[kind] = null;
+    paintAvatarPreview(preview, removeBtn, null, getColor(), getName());
+  });
+}
+
 /* ---------- Onboarding ---------- */
 
 function showOnboarding() {
@@ -276,6 +376,14 @@ function showOnboarding() {
   form.username.value = state.profile.username;
   renderPeriodInputs("obPeriodsList", getActivePeriods(state.profile));
   form.color.value = state.profile.color || "#4f8cff";
+  avatarDraft.ob = undefined;
+  paintAvatarPreview(
+    document.getElementById("obAvatarPreview"),
+    document.getElementById("obAvatarRemove"),
+    state.profile.avatar_url || null,
+    form.color.value,
+    state.profile.username
+  );
   showView("onboarding");
 }
 
@@ -291,14 +399,16 @@ async function onOnboardingSave(e) {
     return;
   }
   try {
-    await updateProfile({
+    const updates = {
       username: fd.get("username").trim(),
       timezone: fd.get("timezone"),
       active_periods: periods,
       active_start: periods[0].start,
       active_end: periods[0].end,
       color: fd.get("color"),
-    });
+    };
+    if (avatarDraft.ob !== undefined) updates.avatar_url = avatarDraft.ob;
+    await updateProfile(updates);
     markOnboarded();
     await loadFriends();
     renderMain();
@@ -318,6 +428,14 @@ function openSettings() {
   form.username.value = state.profile.username;
   renderPeriodInputs("settingsPeriodsList", getActivePeriods(state.profile));
   form.color.value = state.profile.color;
+  avatarDraft.settings = undefined;
+  paintAvatarPreview(
+    document.getElementById("settingsAvatarPreview"),
+    document.getElementById("settingsAvatarRemove"),
+    state.profile.avatar_url || null,
+    form.color.value,
+    state.profile.username
+  );
   document.getElementById("settingsError").hidden = true;
   document.getElementById("settingsModal").hidden = false;
 }
@@ -337,14 +455,16 @@ async function onSaveSettings(e) {
     return;
   }
   try {
-    await updateProfile({
+    const updates = {
       username: fd.get("username").trim(),
       timezone: fd.get("timezone"),
       active_periods: periods,
       active_start: periods[0].start,
       active_end: periods[0].end,
       color: fd.get("color"),
-    });
+    };
+    if (avatarDraft.settings !== undefined) updates.avatar_url = avatarDraft.settings;
+    await updateProfile(updates);
     closeSettings();
     renderMain();
     toast("已保存", "success");
@@ -377,7 +497,7 @@ async function loadFriends() {
   if (otherIds.size > 0) {
     const { data: profs, error: pErr } = await supabase
       .from("profiles")
-      .select("id, username, friend_code, timezone, active_start, active_end, active_periods, override_date, override_periods, color")
+      .select("id, username, friend_code, timezone, active_start, active_end, active_periods, override_date, override_periods, color, avatar_url")
       .in("id", [...otherIds]);
     if (pErr) throw pErr;
     for (const p of profs) profilesById[p.id] = p;
@@ -477,7 +597,7 @@ async function loadChatGroups() {
   const profsById = {};
   if (memberIds.length > 0) {
     const { data: profs } = await supabase
-      .from("profiles").select("id, username, color").in("id", memberIds);
+      .from("profiles").select("id, username, color, avatar_url").in("id", memberIds);
     for (const p of (profs || [])) profsById[p.id] = p;
   }
 
@@ -593,7 +713,7 @@ async function openChatGroup(gid) {
     if (memberIds.length > 0) {
       const { data: profs, error: pErr } = await supabase
         .from("profiles")
-        .select("id, username, color, timezone, active_start, active_end, active_periods, override_date, override_periods")
+        .select("id, username, color, timezone, active_start, active_end, active_periods, override_date, override_periods, avatar_url")
         .in("id", memberIds);
       if (pErr) throw pErr;
       members = profs || [];
@@ -700,7 +820,7 @@ function renderChatMembers() {
     const periods = formatPersonPeriods(m);
     const isMe = m.id === state.session.user.id;
     li.innerHTML = `
-      <span class="swatch" style="background:${escapeAttr(m.color)}"></span>
+      ${renderAvatarHTML(m, "av-sm")}
       <div class="member-info">
         <div class="name">${escapeHtml(m.username)}${isMe ? ' <span class="me-tag">我</span>' : ''}</div>
         <div class="meta">${escapeHtml(tzLabel(m.timezone))} (UTC${offset}) · 当地 ${now} · 活跃 ${escapeHtml(periods)}</div>
@@ -742,8 +862,13 @@ function appendMessage(m) {
   item.className = "msg" + (grouped ? " grouped" : "");
   item.setAttribute("data-user-id", m.user_id);
   item.setAttribute("data-time", String(createdMs));
+  const avatarUrl = author && author.avatar_url;
+  const avatarInner = avatarUrl
+    ? `<img src="${escapeAttr(avatarUrl)}" alt="" loading="lazy" />`
+    : escapeHtml(name.slice(0, 1));
+  const avatarStyle = avatarUrl ? "" : `background:${escapeAttr(color)}`;
   item.innerHTML = `
-    <span class="msg-avatar" style="background:${escapeAttr(color)}">${escapeHtml(name.slice(0, 1))}</span>
+    <span class="msg-avatar" style="${avatarStyle}">${avatarInner}</span>
     <div class="msg-body">
       <div class="msg-head"><span class="msg-name">${escapeHtml(name)}</span><span class="msg-time">${ts}</span></div>
       <div class="msg-text">${escapeHtml(m.content)}</div>
@@ -864,7 +989,7 @@ async function refreshChatMembers() {
   if (memberIds.length > 0) {
     const { data: profs, error: pErr } = await supabase
       .from("profiles")
-      .select("id, username, color, timezone, active_start, active_end, active_periods")
+      .select("id, username, color, timezone, active_start, active_end, active_periods, avatar_url")
       .in("id", memberIds);
     if (pErr) throw pErr;
     members = profs || [];
@@ -954,6 +1079,7 @@ async function onLeaveChatGroup() {
 function renderMain() {
   document.getElementById("meName").textContent = state.profile.username;
   document.getElementById("meCode").textContent = state.profile.friend_code;
+  paintMeAvatar();
 
   const offset = formatOffset(tzOffsetMinutes(state.profile.timezone, new Date()));
   const nowLocal = formatTimeIn(state.profile.timezone, new Date(), state.use24h);
@@ -983,7 +1109,8 @@ function renderFriendList() {
       <label class="friend-toggle" title="在时间轴上显示">
         <input type="checkbox" data-act="toggle" ${visible ? "checked" : ""} />
       </label>
-      <span class="swatch" style="background:${escapeAttr(p.color)}"></span>
+      ${renderAvatarHTML(p, "av-sm")}
+      <span class="swatch" style="background:${escapeAttr(p.color)}" title="时间轴颜色"></span>
       <div>
         <div class="name">${escapeHtml(p.username)}</div>
         <div class="meta">${escapeHtml(tzLabel(p.timezone))} (UTC${offset}) · 当地现在 ${now} · 活跃 ${escapeHtml(formatPersonPeriods(p))}</div>

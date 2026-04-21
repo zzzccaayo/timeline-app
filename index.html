@@ -57,6 +57,16 @@
       </section>
 
       <form id="onboardingForm" class="panel form-panel">
+        <div class="avatar-editor">
+          <div class="avatar-preview" id="obAvatarPreview"></div>
+          <div class="avatar-actions">
+            <label class="ghost small file-btn">
+              上传头像<input type="file" id="obAvatarInput" accept="image/*" hidden />
+            </label>
+            <button type="button" id="obAvatarRemove" class="ghost small" hidden>移除</button>
+            <p class="hint">可选。支持 JPG/PNG/GIF，建议正方形。</p>
+          </div>
+        </div>
         <label>昵称<input type="text" name="username" required minlength="1" maxlength="24" /></label>
         <label>时区<select name="timezone" required></select></label>
         <div class="periods-section">
@@ -79,6 +89,7 @@
       <div class="brand-small">时区时间轴</div>
       <div class="topbar-right">
         <span class="me-code">
+          <span id="meAvatar" class="av av-sm"></span>
           <span class="me-name" id="meName"></span>
           <span class="code-pill" id="meCodePill" title="点击复制">
             <span class="code-label">好友代码</span>
@@ -249,6 +260,16 @@
         <button class="ghost" id="closeSettings">✕</button>
       </div>
       <form id="settingsForm" class="form-panel">
+        <div class="avatar-editor">
+          <div class="avatar-preview" id="settingsAvatarPreview"></div>
+          <div class="avatar-actions">
+            <label class="ghost small file-btn">
+              上传头像<input type="file" id="settingsAvatarInput" accept="image/*" hidden />
+            </label>
+            <button type="button" id="settingsAvatarRemove" class="ghost small" hidden>移除</button>
+            <p class="hint">支持 JPG/PNG/GIF，建议正方形。</p>
+          </div>
+        </div>
         <label>昵称<input type="text" name="username" required minlength="1" maxlength="24" /></label>
         <label>时区<select name="timezone" required></select></label>
         <div class="periods-section">
