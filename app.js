@@ -68,6 +68,7 @@ async function init() {
   bindAuthUI();
 
   let firstHandled = false;
+  let lastUserId = null;
   let applyChain = Promise.resolve();
   const queueApply = (session) => {
     applyChain = applyChain
@@ -78,7 +79,17 @@ async function init() {
 
   supabase.auth.onAuthStateChange((event, session) => {
     console.log("[app] auth event:", event);
+    const uid = session?.user?.id ?? null;
+
+    // Token refresh or same-user re-auth: just keep the session fresh, don't
+    // tear the UI down and reload everything.
+    if (firstHandled && uid && uid === lastUserId) {
+      state.session = session;
+      return;
+    }
+
     firstHandled = true;
+    lastUserId = uid;
     queueApply(session);
   });
 
@@ -88,6 +99,7 @@ async function init() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       firstHandled = true;
+      lastUserId = session?.user?.id ?? null;
       queueApply(session);
     } catch (err) {
       console.error("[app] getSession failed", err);
