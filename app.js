@@ -1683,13 +1683,6 @@ function formatOffset(min) {
   const abs = Math.abs(min);
   return `${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`;
 }
-function formatDuration(min) {
-  const h = Math.floor(min / 60);
-  const m = Math.round(min % 60);
-  if (h && m) return `${h} 小时 ${m} 分`;
-  if (h) return `${h} 小时`;
-  return `${m} 分钟`;
-}
 function pad(n) { return String(n).padStart(2, "0"); }
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
