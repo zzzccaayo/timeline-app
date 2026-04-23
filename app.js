@@ -19,6 +19,7 @@ const state = {
   currentGroup: null,
   use24h: true,
   hiddenFriends: loadHiddenFriends(),
+  friendNotes: loadFriendNotes(),
 };
 
 function loadHiddenFriends() {
@@ -37,6 +38,29 @@ function toggleFriendVisible(id, visible) {
   else state.hiddenFriends.add(id);
   saveHiddenFriends();
   renderTimeline();
+}
+
+function loadFriendNotes() {
+  try {
+    const raw = localStorage.getItem("friendNotes");
+    return new Map(raw ? Object.entries(JSON.parse(raw)) : []);
+  } catch { return new Map(); }
+}
+function saveFriendNotes() {
+  try {
+    localStorage.setItem("friendNotes", JSON.stringify(Object.fromEntries(state.friendNotes)));
+  } catch {}
+}
+function setFriendNote(id, note) {
+  const trimmed = (note || "").trim();
+  if (trimmed) state.friendNotes.set(id, trimmed);
+  else state.friendNotes.delete(id);
+  saveFriendNotes();
+}
+function displayNameFor(profile) {
+  if (!profile) return "?";
+  const note = state.friendNotes.get(profile.id);
+  return note || profile.username || "?";
 }
 
 const views = {
@@ -208,6 +232,7 @@ function bindAuthUI() {
   document.getElementById("saveChatGroupName").addEventListener("click", onRenameChatGroup);
   document.getElementById("addChatGroupMembersBtn").addEventListener("click", onAddChatGroupMembers);
   document.getElementById("leaveChatGroupBtn").addEventListener("click", onLeaveChatGroup);
+  document.getElementById("disbandChatGroupBtn").addEventListener("click", onDisbandChatGroup);
 
   document.getElementById("openOverride").addEventListener("click", openOverrideModal);
   document.getElementById("closeOverride").addEventListener("click", closeOverrideModal);
@@ -569,6 +594,15 @@ async function rejectRequest(id) {
   renderMain();
 }
 
+function editFriendNote(profile) {
+  const current = state.friendNotes.get(profile.id) || "";
+  const next = prompt(`给「${profile.username}」的备注（留空清除）：`, current);
+  if (next === null) return;
+  setFriendNote(profile.id, next);
+  renderMain();
+  toast(next.trim() ? "备注已保存" : "备注已清除", "success");
+}
+
 async function removeFriend(friendProfileId) {
   if (!confirm("删除这位好友？")) return;
   const me = state.session.user.id;
@@ -589,7 +623,7 @@ function copyMyCode() {
 async function loadChatGroups() {
   const { data: groups, error } = await supabase
     .from("chat_groups")
-    .select("id, name, created_at")
+    .select("id, name, created_at, created_by")
     .order("created_at", { ascending: false });
   if (error) throw error;
 
@@ -713,7 +747,7 @@ async function openChatGroup(gid) {
   showView("loading");
   try {
     const { data: group, error: gErr } = await supabase
-      .from("chat_groups").select("id, name").eq("id", gid).single();
+      .from("chat_groups").select("id, name, created_by").eq("id", gid).single();
     if (gErr) throw gErr;
 
     const { data: mrows, error: mErr } = await supabase
@@ -834,7 +868,7 @@ function renderChatMembers() {
     li.innerHTML = `
       ${renderAvatarHTML(m, "av-sm")}
       <div class="member-info">
-        <div class="name">${escapeHtml(m.username)}${isMe ? ' <span class="me-tag">我</span>' : ''}</div>
+        <div class="name">${escapeHtml(isMe ? m.username : displayNameFor(m))}${isMe ? ' <span class="me-tag">我</span>' : ''}</div>
         <div class="meta">${escapeHtml(tzLabel(m.timezone))} (UTC${offset}) · 当地 ${now} · 活跃 ${escapeHtml(periods)}</div>
       </div>
     `;
@@ -860,7 +894,8 @@ function appendMessage(m) {
   const emptyEl = el.querySelector(".chat-empty");
   if (emptyEl) emptyEl.remove();
   const author = state.currentGroup.members.find(p => p.id === m.user_id);
-  const name = author ? author.username : "(未知)";
+  const isMyMsg = author && author.id === state.session.user.id;
+  const name = author ? (isMyMsg ? author.username : displayNameFor(author)) : "(未知)";
   const color = author ? author.color : "#888";
   const createdMs = new Date(m.created_at).getTime();
   const ts = new Date(createdMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -906,6 +941,9 @@ function openChatGroupModal() {
   if (!state.currentGroup) return;
   const g = state.currentGroup;
   document.getElementById("chatGroupNameInput").value = g.name;
+
+  const isCreator = g.created_by && state.profile && g.created_by === state.profile.id;
+  document.getElementById("disbandChatGroupBtn").hidden = !isCreator;
 
   const picker = document.getElementById("chatGroupAddPicker");
   const emptyEl = document.getElementById("chatGroupAddEmpty");
@@ -1069,6 +1107,31 @@ async function onClearOverride() {
   }
 }
 
+async function onDisbandChatGroup() {
+  if (!state.currentGroup) return;
+  const g = state.currentGroup;
+  if (!state.profile || g.created_by !== state.profile.id) {
+    toast("只有建群人能解散这个群", "error");
+    return;
+  }
+  if (!confirm(`解散「${g.name}」后所有成员都会被移出，聊天记录也会删除。确定解散吗？`)) return;
+  const gid = g.id;
+  const { error } = await supabase.rpc("disband_chat_group", { p_group_id: gid });
+  if (error) {
+    const m = (error.message || "").toLowerCase();
+    if (m.includes("not_group_creator")) toast("只有建群人能解散这个群", "error");
+    else if (m.includes("group_not_found")) toast("群不存在或已被解散", "error");
+    else toast("解散失败：" + error.message, "error");
+    return;
+  }
+  closeChatGroupModal();
+  teardownChat();
+  await loadChatGroups();
+  renderMain();
+  showView("main");
+  toast("群已解散", "success");
+}
+
 async function onLeaveChatGroup() {
   if (!state.currentGroup) return;
   if (!confirm("确认退出这个群？离开后就看不到这里的消息了。")) return;
@@ -1112,6 +1175,9 @@ function renderFriendList() {
     const offset = formatOffset(tzOffsetMinutes(p.timezone, new Date()));
     const now = formatTimeIn(p.timezone, new Date(), state.use24h);
     const visible = !state.hiddenFriends.has(p.id);
+    const note = state.friendNotes.get(p.id) || "";
+    const shownName = note || p.username;
+    const subName = note ? `<span class="sub-name">(${escapeHtml(p.username)})</span>` : "";
     li.innerHTML = `
       <label class="friend-toggle" title="在时间轴上显示">
         <input type="checkbox" data-act="toggle" ${visible ? "checked" : ""} />
@@ -1119,14 +1185,16 @@ function renderFriendList() {
       ${renderAvatarHTML(p, "av-sm")}
       <span class="swatch" style="background:${escapeAttr(p.color)}" title="时间轴颜色"></span>
       <div>
-        <div class="name">${escapeHtml(p.username)}</div>
+        <div class="name">${escapeHtml(shownName)} ${subName}</div>
         <div class="meta">${escapeHtml(tzLabel(p.timezone))} (UTC${offset}) · 当地现在 ${now} · 活跃 ${escapeHtml(formatPersonPeriods(p))}</div>
       </div>
       <span class="spacer"></span>
+      <button class="ghost small" data-act="note">${note ? "改备注" : "备注"}</button>
       <button class="ghost small" data-act="del">删除</button>
     `;
     li.querySelector('[data-act="del"]').addEventListener("click", () => removeFriend(p.id));
     li.querySelector('[data-act="toggle"]').addEventListener("change", (e) => toggleFriendVisible(p.id, e.target.checked));
+    li.querySelector('[data-act="note"]').addEventListener("click", () => editFriendNote(p));
     ul.appendChild(li);
   }
 }
@@ -1234,7 +1302,7 @@ function paintHero(nowMin, selfIntervals, friendData, anyOverlap) {
       metaEl.innerHTML = nextSelf ? `你的下一个活跃时段 · <b>${minutesToLabel(nextSelf)}</b>` : "今天都收工了";
     }
   } else {
-    const names = onlineFriends.map(d => d.profile.username).join("、");
+    const names = onlineFriends.map(d => displayNameFor(d.profile)).join("、");
     if (iAmOnline) {
       headEl.textContent = `你和 ${names} 正在一起`;
       const rem = currentRemaining(anyOverlap, nowMin);
@@ -1339,7 +1407,7 @@ function paintClock(nowMin, selfIntervals, friendData, anyOverlap) {
   }
   for (const h of [0, 6, 12, 18]) {
     const [tx, ty] = polar(R_OUT + 16, h * 15);
-    html += `<text x="${tx}" y="${ty + 4}" fill="#949ba4" text-anchor="middle" font-size="11" font-weight="600" style="letter-spacing:.05em">${pad(h)}</text>`;
+    html += `<text x="${tx}" y="${ty + 5}" fill="#b5bac1" text-anchor="middle" font-size="16" font-weight="700" style="letter-spacing:.05em">${pad(h)}</text>`;
   }
   for (const ring of rings) {
     for (const [s, e] of ring.intervals) {
@@ -1382,7 +1450,7 @@ function paintTimelineLegend(nowMin, selfIntervals, friendData) {
       ${av}
       <span class="legend-dot" style="background:${escapeAttr(p.profile.color)}"></span>
       <div class="info">
-        <div class="name">${escapeHtml(p.profile.username)}${p.isMe ? ' <span class="tag me-tag">我</span>' : ""}</div>
+        <div class="name">${escapeHtml(p.isMe ? p.profile.username : displayNameFor(p.profile))}${p.isMe ? ' <span class="tag me-tag">我</span>' : ""}</div>
         <div class="sub">${escapeHtml(periodsText)}</div>
       </div>
       ${online ? '<span class="tag">在线</span>' : ""}
@@ -1427,7 +1495,7 @@ function renderOverlapList(friendData, allOverlap) {
     group.className = "overlap-group";
     const head = document.createElement("div");
     head.className = "overlap-group-title";
-    head.innerHTML = `<span class="dot-color" style="background:${escapeAttr(d.profile.color)}"></span>和 ${escapeHtml(d.profile.username)}`;
+    head.innerHTML = `<span class="dot-color" style="background:${escapeAttr(d.profile.color)}"></span>和 ${escapeHtml(displayNameFor(d.profile))}`;
     group.appendChild(head);
     const chips = document.createElement("div");
     chips.className = "overlap-chip-row";
