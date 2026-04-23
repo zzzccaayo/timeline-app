@@ -776,6 +776,7 @@ async function openChatGroup(gid) {
     state.currentGroup = {
       id: gid,
       name: group.name,
+      created_by: group.created_by,
       members,
       messages: messages || [],
       channel: null,
