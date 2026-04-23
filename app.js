@@ -46,16 +46,24 @@ function loadFriendNotes() {
     return new Map(raw ? Object.entries(JSON.parse(raw)) : []);
   } catch { return new Map(); }
 }
-function saveFriendNotes() {
-  try {
-    localStorage.setItem("friendNotes", JSON.stringify(Object.fromEntries(state.friendNotes)));
-  } catch {}
-}
-function setFriendNote(id, note) {
-  const trimmed = (note || "").trim();
-  if (trimmed) state.friendNotes.set(id, trimmed);
-  else state.friendNotes.delete(id);
-  saveFriendNotes();
+async function setFriendNote(id, note) {
+  const me = state.session?.user?.id;
+  if (!me) return false;
+  const trimmed = (note || "").trim().slice(0, 64);
+  if (trimmed) {
+    const { error } = await supabase
+      .from("friend_notes")
+      .upsert({ owner_id: me, friend_id: id, note: trimmed, updated_at: new Date().toISOString() });
+    if (error) { toast("备注保存失败：" + error.message, "error"); return false; }
+    state.friendNotes.set(id, trimmed);
+  } else {
+    const { error } = await supabase
+      .from("friend_notes").delete()
+      .eq("owner_id", me).eq("friend_id", id);
+    if (error) { toast("清除备注失败：" + error.message, "error"); return false; }
+    state.friendNotes.delete(id);
+  }
+  return true;
 }
 function displayNameFor(profile) {
   if (!profile) return "?";
@@ -547,6 +555,44 @@ async function loadFriends() {
 
   state.pendingIn = pendingIn.map(r => ({ friendship: r, profile: profilesById[r.requester_id] }));
   state.pendingOut = pendingOut.map(r => ({ friendship: r, profile: profilesById[r.addressee_id] }));
+
+  await loadFriendNotesFromDb(me);
+}
+
+async function loadFriendNotesFromDb(me) {
+  const { data: rows, error } = await supabase
+    .from("friend_notes")
+    .select("friend_id, note")
+    .eq("owner_id", me);
+  if (error) {
+    console.warn("[app] load friend_notes failed", error);
+    return;
+  }
+  state.friendNotes = new Map((rows || []).map(r => [r.friend_id, r.note]));
+
+  // One-time migration: push any notes that used to live in localStorage up to
+  // the server so they sync across devices. Only runs when the server has no
+  // notes yet for this user and localStorage has some.
+  try {
+    const localMap = loadFriendNotes();
+    if (state.friendNotes.size === 0 && localMap.size > 0) {
+      const payload = [...localMap.entries()].map(([friend_id, note]) => ({
+        owner_id: me,
+        friend_id,
+        note: String(note).slice(0, 64),
+      }));
+      const { error: upErr } = await supabase.from("friend_notes").upsert(payload);
+      if (!upErr) {
+        for (const [id, note] of localMap) state.friendNotes.set(id, note);
+        localStorage.removeItem("friendNotes");
+        console.log("[app] migrated", payload.length, "local friend notes to server");
+      } else {
+        console.warn("[app] migrate friend_notes failed", upErr);
+      }
+    }
+  } catch (e) {
+    console.warn("[app] friend_notes migration skipped", e);
+  }
 }
 
 async function onAddFriend(e) {
@@ -594,11 +640,12 @@ async function rejectRequest(id) {
   renderMain();
 }
 
-function editFriendNote(profile) {
+async function editFriendNote(profile) {
   const current = state.friendNotes.get(profile.id) || "";
-  const next = prompt(`给「${profile.username}」的备注（留空清除）：`, current);
+  const next = prompt(`给「${profile.username}」的备注（留空清除，最长 64 字）：`, current);
   if (next === null) return;
-  setFriendNote(profile.id, next);
+  const ok = await setFriendNote(profile.id, next);
+  if (!ok) return;
   renderMain();
   toast(next.trim() ? "备注已保存" : "备注已清除", "success");
 }
